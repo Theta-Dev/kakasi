@@ -1,5 +1,9 @@
 use std::borrow::Cow;
 
+pub fn convert(text: &str) -> String {
+    convert_kanji(text, "").0
+}
+
 /// Convert the leading kanji from the input string to hiragana
 ///
 /// # Arguments
@@ -45,9 +49,9 @@ fn convert_kanji(text: &str, btext: &str) -> (String, usize) {
         n_c += 1;
     }
 
-    return translation
+    translation
         .map(|tl| (tl.to_owned(), n_c))
-        .unwrap_or_default();
+        .unwrap_or_default()
 }
 
 /// Convert all synonymous kanji

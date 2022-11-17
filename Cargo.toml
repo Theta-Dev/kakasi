@@ -19,3 +19,6 @@ wana_kana = "2.1.0"
 
 [dev-dependencies]
 rstest = { version = "0.15.0", default-features = false }
+
+[profile.release]
+strip = true
