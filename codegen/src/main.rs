@@ -1,7 +1,11 @@
-use std::{collections::HashMap, path::Path};
+use std::{borrow::Cow, collections::HashMap, path::Path};
+
+use once_cell::sync::Lazy;
+use regex::{Captures, Regex};
+use unicode_normalization::UnicodeNormalization;
 
 fn parse_dict<P: AsRef<Path>>(records: &mut Records, file: P) {
-    let content = std::fs::read_to_string(file).unwrap();
+    let content = std::fs::read_to_string(file).unwrap().nfkc().to_string();
     content
         .lines()
         .for_each(|line| parse_dict_ln(records, line));
@@ -9,7 +13,7 @@ fn parse_dict<P: AsRef<Path>>(records: &mut Records, file: P) {
 
 fn parse_dict_ln(records: &mut Records, line: &str) {
     // Skip comments
-    if line.starts_with(";;") {
+    if line.starts_with(";;") || line.is_empty() {
         return;
     }
 
@@ -18,21 +22,22 @@ fn parse_dict_ln(records: &mut Records, line: &str) {
     let kanji = token.next();
     let context = token.collect::<Vec<_>>();
 
-    if let (Some(mut reading), Some(kanji)) = (reading, kanji) {
-        if reading.is_empty() || kanji.is_empty() {
-            panic!("could not parse line: `{}`", line);
-        }
+    match (reading, kanji) {
+        (Some(mut reading), Some(kanji)) => {
+            if reading.is_empty() || kanji.is_empty() {
+                panic!("could not parse line: `{}`", line);
+            }
 
-        let (i_last, last) = reading.char_indices().last().unwrap();
-        let tail = if last.is_ascii_alphabetic() {
-            reading = &reading[0..i_last];
-            Some(last)
-        } else {
-            None
-        };
-        updaterec(records, kanji, reading, tail, &context);
-    } else {
-        panic!("could not parse line: `{}`", line);
+            let (i_last, last) = reading.char_indices().last().unwrap();
+            let tail = if last.is_ascii_alphabetic() {
+                reading = &reading[0..i_last];
+                Some(last)
+            } else {
+                None
+            };
+            updaterec(records, kanji, reading, tail, &context);
+        }
+        _ => panic!("could not parse line: `{}`", line),
     }
 }
 
@@ -62,11 +67,7 @@ static CLETTERS: phf::Map<char, &[&str]> = phf::phf_map!(
     'v' => &["ゔ"],
 );
 
-static TEST_MAP: phf::Map<&str, &[(&str, &[&str])]> = phf::phf_map!(
-    "a" => &[("", &[])],
-);
-
-type Records = HashMap<String, Vec<(String, Vec<String>)>>;
+type Records = HashMap<String, HashMap<String, String>>;
 
 fn updaterec(
     records: &mut Records,
@@ -92,49 +93,129 @@ fn updaterec(
             }
         }
         None => {
-            let entry = records.entry(kanji.to_owned()).or_default();
-            entry.push((
-                reading.to_owned(),
-                context.iter().map(|x| (*x).to_owned()).collect(),
-            ));
+            let krecord = records.entry(kanji.to_owned()).or_default();
+
+            if context.is_empty() {
+                krecord
+                    .entry(String::new())
+                    .or_insert_with(|| reading.to_owned());
+            } else {
+                context.iter().for_each(|c| {
+                    krecord
+                        .entry((*c).to_owned())
+                        .or_insert_with(|| reading.to_owned());
+                });
+            }
         }
     }
 }
 
-fn main() {
+fn generate_kanji_dict() -> String {
     let mut records = Records::default();
     parse_dict(&mut records, Path::new("dict/kakasidict.utf8"));
-    // parse_dict(&mut records, Path::new("dict/unidict_adj.utf8"));
-    // parse_dict(&mut records, Path::new("dict/unidict_noun.utf8"));
+    parse_dict(&mut records, Path::new("dict/unidict_adj.utf8"));
+    parse_dict(&mut records, Path::new("dict/unidict_noun.utf8"));
 
-    let mut map = phf_codegen::Map::<&str>::new();
+    let mut phf_map = phf_codegen::Map::<&str>::new();
 
     for (kanji, entry) in &records {
         let mut code_readings = entry
             .iter()
-            .map(|(reading, context)| {
-                let mut code_context = context
-                    .iter()
-                    .map(|c| format!(r#""{}", "#, c))
-                    .collect::<String>();
-                code_context.pop();
-                code_context.pop();
-                format!(r#"("{}", &[{}]), "#, reading, code_context)
-            })
+            .map(|(context, reading)| format!(r#"({:?}, {:?}), "#, reading, context))
             .collect::<String>();
         code_readings.pop();
         code_readings.pop();
 
         let code_entry = format!(r#"&[{}]"#, code_readings);
-        map.entry(kanji, &code_entry);
+        phf_map.entry(kanji, &code_entry);
     }
 
+    format!(
+        "#[rustfmt::skip]\npub(crate) static KANJI_DICT: phf::Map<&str, &[(&str, &str)]> = {};\n",
+        phf_map.build()
+    )
+}
+
+fn generate_syn_dict() -> String {
+    let mut dict = HashMap::new();
+    let content = std::fs::read_to_string("dict/itaijidict.utf8").unwrap();
+    content
+        .lines()
+        .for_each(|line| parse_syn_ln(&mut dict, line));
+
+    let mut phf_map = phf_codegen::Map::<char>::new();
+
+    for (key, val) in &dict {
+        phf_map.entry(*key, &format!("{:?}", val));
+    }
+
+    format!(
+        "#[rustfmt::skip]\npub(crate) static SYN_DICT: phf::Map<char, char> = {};\n",
+        phf_map.build()
+    )
+}
+
+fn unescape(text: &str) -> Cow<str> {
+    static ESCAPE_SEQUENCE_RE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"\\[Uu]([\dA-Fa-f]{4,8})"#).unwrap());
+
+    ESCAPE_SEQUENCE_RE.replace_all(text, |caps: &Captures| {
+        let hex_str = caps.get(1).unwrap().as_str();
+        match u32::from_str_radix(hex_str, 16) {
+            Ok(hex_val) => match char::from_u32(hex_val) {
+                Some(c) => c.to_string(),
+                None => panic!("could not convert character {}", hex_str),
+            },
+            Err(_) => panic!("could not parse character {}", hex_str),
+        }
+    })
+}
+
+fn parse_syn_ln(dict: &mut HashMap<char, char>, line: &str) {
+    // Skip comments
+    if line.starts_with(";;") || line.is_empty() {
+        return;
+    }
+
+    let line_unescaped = unescape(line);
+    let mut token = line_unescaped.split_ascii_whitespace();
+    let value = token.next();
+    let key = token.next();
+
+    match (key, value) {
+        (Some(key), Some(value)) => {
+            if key.is_empty() || value.is_empty() {
+                panic!("invalid line: `{}`", line);
+            }
+
+            let mut kchars = key.nfkc();
+            let mut vchars = value.nfkc();
+
+            let kc = kchars.next().unwrap();
+            let vc = vchars.next().unwrap();
+
+            if kc == vc {
+                eprintln!("equal k/v `{}`, skipping", kc);
+                return;
+            }
+
+            if kchars.next().is_some() || vchars.next().is_some() {
+                panic!("invalid line, k/v has more than 1 char: `{}`", line);
+            }
+
+            dict.insert(kc, vc);
+        }
+        _ => panic!("could not parse line: `{}`", line),
+    }
+}
+
+fn main() {
     let code_header = r#"// This file is automatically generated using the kakasi-codegen crate. DO NOT EDIT.
 "#;
-    let code = format!(
-        "{}\n#[rustfmt::skip]\npub(crate) static KANWA_DICT: phf::Map<&str, &[(&str, &[&str])]> = {};\n",
-        code_header,
-        map.build().to_string()
-    );
-    std::fs::write("test.rs", &code).unwrap();
+    let code_kanji_dict = generate_kanji_dict();
+    let code_syn_dict = generate_syn_dict();
+
+    let code = format!("{}\n{}\n{}", code_header, code_kanji_dict, code_syn_dict);
+
+    std::fs::write("dict.rs", &code).unwrap();
 }

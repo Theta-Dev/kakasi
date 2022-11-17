@@ -9,11 +9,13 @@ description = "Romanize hiragana, katakana and kanji (Japanese text)"
 include = ["/src", "README.md", "LICENSE"]
 
 [workspace]
-members = [".", "codegen"]
+members = [".", "codegen", "dict"]
 
 [dependencies]
+kakasi-dict = { path = "./dict" }
 phf = "0.11.1"
+unicode-normalization = "0.1.22"
 wana_kana = "2.1.0"
 
 [dev-dependencies]
-rstest = "0.15.0"
+rstest = { version = "0.15.0", default-features = false }
