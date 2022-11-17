@@ -1,0 +1,9 @@
+[package]
+name = "kakasi-codegen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+substring = "1.4.5"
+phf = {version = "0.11.1", features = ["macros"]}
+phf_codegen = "0.11.1"
