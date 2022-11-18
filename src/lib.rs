@@ -26,7 +26,7 @@ fn convert_kanji(text: &str, btext: &str) -> (String, usize) {
     for (i, c) in text.char_indices() {
         let kanji = &text[0..i + c.len_utf8()];
 
-        let this_tl = kakasi_dict::KANJI_DICT.get(kanji).and_then(|readings| {
+        let this_tl = kakasi_dict::lookup_kanji(kanji).and_then(|readings| {
             readings
                 .iter()
                 .filter_map(|(reading, context)| {
@@ -60,11 +60,7 @@ fn convert_kanji(text: &str, btext: &str) -> (String, usize) {
 fn convert_syn(text: &str) -> Cow<str> {
     let mut replacements = text
         .char_indices()
-        .filter_map(|(i, c)| {
-            kakasi_dict::SYN_DICT
-                .get(&c)
-                .map(|r_char| (i, c.len_utf8(), *r_char))
-        })
+        .filter_map(|(i, c)| kakasi_dict::lookup_syn(&c).map(|r_char| (i, c.len_utf8(), *r_char)))
         .peekable();
 
     if replacements.peek().is_none() {

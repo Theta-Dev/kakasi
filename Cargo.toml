@@ -21,4 +21,8 @@ wana_kana = "2.1.0"
 rstest = { version = "0.15.0", default-features = false }
 
 [profile.release]
+# These settings optimize for size
+codegen-units = 1
+opt-level = 'z'
+lto = true
 strip = true

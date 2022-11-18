@@ -67,7 +67,7 @@ static CLETTERS: phf::Map<char, &[&str]> = phf::phf_map!(
     'v' => &["ゔ"],
 );
 
-type Records = HashMap<String, HashMap<String, String>>;
+type Records = HashMap<String, String>;
 
 fn updaterec(
     records: &mut Records,
@@ -76,6 +76,11 @@ fn updaterec(
     tail: Option<char>,
     context: &[&str],
 ) {
+    if !context.is_empty() {
+        eprintln!("skipping `{}` with context {:?}", kanji, context);
+        return;
+    }
+
     match tail {
         Some(tail) => {
             if let Some(cltrs) = CLETTERS.get(&tail) {
@@ -93,19 +98,9 @@ fn updaterec(
             }
         }
         None => {
-            let krecord = records.entry(kanji.to_owned()).or_default();
-
-            if context.is_empty() {
-                krecord
-                    .entry(String::new())
-                    .or_insert_with(|| reading.to_owned());
-            } else {
-                context.iter().for_each(|c| {
-                    krecord
-                        .entry((*c).to_owned())
-                        .or_insert_with(|| reading.to_owned());
-                });
-            }
+            records
+                .entry(kanji.to_owned())
+                .or_insert_with(|| reading.to_owned());
         }
     }
 }
@@ -118,20 +113,13 @@ fn generate_kanji_dict() -> String {
 
     let mut phf_map = phf_codegen::Map::<&str>::new();
 
-    for (kanji, entry) in &records {
-        let mut code_readings = entry
-            .iter()
-            .map(|(context, reading)| format!(r#"({:?}, {:?}), "#, reading, context))
-            .collect::<String>();
-        code_readings.pop();
-        code_readings.pop();
-
-        let code_entry = format!(r#"&[{}]"#, code_readings);
+    for (kanji, reading) in &records {
+        let code_entry = format!("{:?}", reading);
         phf_map.entry(kanji, &code_entry);
     }
 
     format!(
-        "#[rustfmt::skip]\npub(crate) static KANJI_DICT: phf::Map<&str, &[(&str, &str)]> = {};\n",
+        "#[rustfmt::skip]\npub static KANJI_DICT: phf::Map<&str, &str> = {};\n",
         phf_map.build()
     )
 }
@@ -150,7 +138,7 @@ fn generate_syn_dict() -> String {
     }
 
     format!(
-        "#[rustfmt::skip]\npub(crate) static SYN_DICT: phf::Map<char, char> = {};\n",
+        "#[rustfmt::skip]\npub static SYN_DICT: phf::Map<char, char> = {};\n",
         phf_map.build()
     )
 }
