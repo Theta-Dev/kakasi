@@ -8,10 +8,11 @@ fn parse_dict<P: AsRef<Path>>(records: &mut Records, file: P) {
     let content = std::fs::read_to_string(file).unwrap().nfkc().to_string();
     content
         .lines()
-        .for_each(|line| parse_dict_ln(records, line));
+        .enumerate()
+        .for_each(|(ln, line)| parse_dict_ln(records, line, ln + 1));
 }
 
-fn parse_dict_ln(records: &mut Records, line: &str) {
+fn parse_dict_ln(records: &mut Records, line: &str, ln: usize) {
     // Skip comments
     if line.starts_with(";;") || line.is_empty() {
         return;
@@ -20,24 +21,43 @@ fn parse_dict_ln(records: &mut Records, line: &str) {
     let mut token = line.split_ascii_whitespace();
     let reading = token.next();
     let kanji = token.next();
-    let context = token.collect::<Vec<_>>();
+    let context = token.next();
+
+    // Validate
+    if token.next().is_some() {
+        println!("kanji({}): more than 1 ctx, `{}`", ln, line);
+    }
+
+    if let Some(context) = context {
+        if !wana_kana::is_hiragana::is_hiragana(context) {
+            println!("kanji({}): ctx not hiragana, `{}`", ln, line);
+        }
+    }
 
     match (reading, kanji) {
         (Some(mut reading), Some(kanji)) => {
-            if reading.is_empty() || kanji.is_empty() {
-                panic!("could not parse line: `{}`", line);
-            }
-
+            // Parse tail
             let (i_last, last) = reading.char_indices().last().unwrap();
             let tail = if last.is_ascii_alphabetic() {
                 reading = &reading[0..i_last];
+                if !CLETTERS.contains_key(&last) {
+                    println!("kanji({}): invalid tail, `{}`", ln, line);
+                }
                 Some(last)
             } else {
                 None
             };
-            updaterec(records, kanji, reading, tail, &context);
+
+            if !wana_kana::is_hiragana::is_hiragana(reading) {
+                println!("kanji({}): reading not hiragana", ln);
+            }
+            if !wana_kana::is_kanji::contains_kanji(kanji)
+                || kanji.chars().any(|c| c.is_ascii() && c != ' ')
+            {
+                println!("kanji({}): kanji not kanji/hiragana, `{}`", ln, line);
+            }
         }
-        _ => panic!("could not parse line: `{}`", line),
+        _ => panic!("kanji({}): could not parse line, `{}`", ln, line),
     }
 }
 
@@ -108,20 +128,8 @@ fn updaterec(
 fn generate_kanji_dict() -> String {
     let mut records = Records::default();
     parse_dict(&mut records, Path::new("dict/kakasidict.utf8"));
-    parse_dict(&mut records, Path::new("dict/unidict_adj.utf8"));
-    parse_dict(&mut records, Path::new("dict/unidict_noun.utf8"));
 
-    let mut phf_map = phf_codegen::Map::<&str>::new();
-
-    for (kanji, reading) in &records {
-        let code_entry = format!("{:?}", reading);
-        phf_map.entry(kanji, &code_entry);
-    }
-
-    format!(
-        "#[rustfmt::skip]\npub static KANJI_DICT: phf::Map<&str, &str> = {};\n",
-        phf_map.build()
-    )
+    String::new()
 }
 
 fn generate_syn_dict() -> String {
@@ -183,17 +191,17 @@ fn parse_syn_ln(dict: &mut HashMap<char, char>, line: &str) {
             let vc = vchars.next().unwrap();
 
             if kc == vc {
-                eprintln!("equal k/v `{}`, skipping", kc);
+                eprintln!("syn: equal k/v `{}`, skipping", kc);
                 return;
             }
 
             if kchars.next().is_some() || vchars.next().is_some() {
-                panic!("invalid line, k/v has more than 1 char: `{}`", line);
+                panic!("syn: invalid line, k/v has more than 1 char: `{}`", line);
             }
 
             dict.insert(kc, vc);
         }
-        _ => panic!("could not parse line: `{}`", line),
+        _ => panic!("syn: could not parse line: `{}`", line),
     }
 }
 
