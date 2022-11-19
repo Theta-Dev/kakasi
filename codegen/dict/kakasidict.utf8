@@ -9,12 +9,12 @@
 ;; This dictionary has been made from the large size dictionary of
 ;; SKK system version 7 of May, 1994 and the special dictionary for
 ;; KAKASI version 1 of May 1, 1992.
-;; 
+;;
 ;; この辞書は SKK version 7 に附属する辞書と KAKASI 1.2 のために作成
 ;; した辞書から作成し、KAKASI のために若干の変更を加えたものです。そ
 ;; のため著作権者には筑波インターネットクラブの高橋 (takahasi@tiny.or.jp)
 ;; および佐藤 (masahiko@sato.riec.tohoku.ac.jp) 等が含まれます。この
-;; 再配布及び改変にあたっては以下に述べる GNU General Public License 
+;; 再配布及び改変にあたっては以下に述べる GNU General Public License
 ;; の順守が条件となります。
 ;; This dictionary is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -170,7 +170,7 @@
 とうこう 東耕
 よしたか 吉孝
 こな 粉
-きづk 気付k
+きづk 気付
 つk 付
 ため 為
 かた 方
@@ -106538,7 +106538,7 @@
 しs 悉
 しめりゆき 湿り雪
 しけr 湿気
-しう゛ぁ 湿婆
+しうぁ 湿婆
 しめr 湿
 しめs 湿
 うるしやま 漆山
@@ -120480,7 +120480,6 @@
 りろんてんかい 理論展開
 りろんめいだい 理論命題
 とおる 理
-りさん 理III
 うらどら 裏ドラ
 うらがめん 裏画面
 うらじじょう 裏事情
@@ -121771,11 +121770,8 @@
 と 墸
 たな 屶
 ゆま 岾
-?おんぎみしょう? 彁
-?おんぎみしょう? 恷
 たわ 撓
 たお 撓
-?おんぎみしょう? 暃
 かたら 枦
 ぬで 椦
 たふ 椨
@@ -121786,12 +121782,10 @@
 ぬたがわ 汢川
 ね 畩
 せき 碵
-?おんぎみしょう? 穃
 がん 篏
 すくも 粐
 もみがら 粐
 もみぬか 粐
-?おんぎみしょう? 粫
 せつ 膤
 もみ 蟐
 でい 袮
