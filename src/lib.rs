@@ -63,8 +63,19 @@ pub fn convert(text: &str) -> KakasiResult {
 
     let mut char_indices = text.char_indices();
     let mut kana_text = String::new();
-    let mut hiragana = String::new();
     let mut prev_type = CharType::Kanji;
+
+    let mut hiragana = String::new();
+    let mut romaji = String::new();
+
+    let conv_kana_txt = |kana_text: &mut String, hiragana: &mut String, romaji: &mut String| {
+        if !kana_text.is_empty() {
+            let h = convert_kana(&kana_text);
+            hiragana.push_str(&h);
+            romaji.push_str(&wana_kana::to_romaji::to_romaji(&h));
+            romaji.push(' ');
+        }
+    };
 
     // output_flag
     // means (output buffer?, output text[i]?, copy to buffer and increment i?)
@@ -99,9 +110,7 @@ pub fn convert(text: &str) -> KakasiResult {
         } else if c.is_ascii() {
             (CharType::Alpha, prev_type != CharType::Alpha, false, true)
         } else if wana_kana::utils::is_char_kanji(c) {
-            if !kana_text.is_empty() {
-                hiragana.push_str(&convert_kana(&kana_text));
-            }
+            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji);
             let (t, n) = convert_kanji(&text[i..], &kana_text, &dict);
 
             if n > 0 {
@@ -115,13 +124,13 @@ pub fn convert(text: &str) -> KakasiResult {
                 kana_text.clear();
                 // TODO: FOR TESTING
                 hiragana.push_str("🯄");
+                romaji.push_str("🯄");
                 (CharType::Kanji, true, false, false)
             }
         } else if matches!(c as u32, 0xf000..=0xfffd | 0x10000..=0x10ffd) {
             // PUA: ignore and drop
-            if !kana_text.is_empty() {
-                hiragana.push_str(&convert_kana(&kana_text));
-            }
+            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji);
+            kana_text.clear();
             (prev_type, false, false, false)
         } else {
             (prev_type, true, true, true)
@@ -131,12 +140,10 @@ pub fn convert(text: &str) -> KakasiResult {
 
         if output_flag.1 && output_flag.2 {
             kana_text.push(c);
-            hiragana.push_str(&convert_kana(&kana_text));
+            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji);
             kana_text.clear()
         } else if output_flag.1 && output_flag.3 {
-            if !kana_text.is_empty() {
-                hiragana.push_str(&convert_kana(&kana_text));
-            }
+            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji);
             kana_text = c.to_string();
         } else if output_flag.3 {
             kana_text.push(c);
@@ -144,12 +151,9 @@ pub fn convert(text: &str) -> KakasiResult {
     }
 
     // Convert last word
-    if !kana_text.is_empty() {
-        hiragana.push_str(&convert_kana(&kana_text));
-    }
-
-    // Convert to romaji
-    let romaji = wana_kana::to_romaji::to_romaji(&hiragana);
+    conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji);
+    // Remove trailing space
+    romaji.pop();
 
     KakasiResult { hiragana, romaji }
 }
@@ -191,7 +195,7 @@ fn convert_kana(text: &str) -> String {
 ///   The input needs to be NFKC-normalized and synonymous kanji need to be
 ///   replaced using [`convert_syn`].
 ///
-/// * `btext` -
+/// * `btext` - Buffer string (leading kana)
 ///
 /// # Return
 ///
