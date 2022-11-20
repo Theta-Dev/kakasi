@@ -1,6 +1,6 @@
 fn main() {
     for line in std::io::stdin().lines() {
         let res = kakasi::convert(&line.unwrap());
-        println!("{} - {}", res.hiragana, res.romaji);
+        println!("{}\n{}\n\n", res.hiragana, res.romaji);
     }
 }

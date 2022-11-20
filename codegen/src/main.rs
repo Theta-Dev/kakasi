@@ -67,9 +67,9 @@ fn parse_dict_ln(records: &mut Records, line: &str, ln: usize) {
                     .unwrap_or_default(),
             ) {
                 std::collections::hash_map::Entry::Occupied(mut e) => {
-                    // Replace reading if the new one is longer
+                    // Replace reading if the new one is shorter
                     let val = e.get_mut();
-                    if val.len() < reading.len() {
+                    if val.len() > reading.len() {
                         *val = reading.to_owned();
                     }
                 }
