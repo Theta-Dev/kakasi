@@ -1,6 +1,10 @@
+mod phfbin_gen;
+
 use std::{borrow::Cow, collections::HashMap, path::Path};
 
 use once_cell::sync::Lazy;
+use phf::PhfHash;
+use phfbin_gen::Encodable;
 use regex::{Captures, Regex};
 use unicode_normalization::UnicodeNormalization;
 
@@ -25,12 +29,12 @@ fn parse_dict_ln(records: &mut Records, line: &str, ln: usize) {
 
     // Validate
     if token.next().is_some() {
-        println!("kanji({}): more than 1 ctx, `{}`", ln, line);
+        panic!("kanji({}): more than 1 ctx, `{}`", ln, line);
     }
 
     if let Some(context) = context {
         if !wana_kana::is_hiragana::is_hiragana(context) {
-            println!("kanji({}): ctx not hiragana, `{}`", ln, line);
+            panic!("kanji({}): ctx not hiragana, `{}`", ln, line);
         }
     }
 
@@ -41,7 +45,7 @@ fn parse_dict_ln(records: &mut Records, line: &str, ln: usize) {
             let tail = if last.is_ascii_alphabetic() {
                 reading = &reading[0..i_last];
                 if !CLETTERS.contains_key(&last) {
-                    println!("kanji({}): invalid tail, `{}`", ln, line);
+                    panic!("kanji({}): invalid tail, `{}`", ln, line);
                 }
                 Some(last)
             } else {
@@ -49,12 +53,29 @@ fn parse_dict_ln(records: &mut Records, line: &str, ln: usize) {
             };
 
             if !wana_kana::is_hiragana::is_hiragana(reading) {
-                println!("kanji({}): reading not hiragana", ln);
+                panic!("kanji({}): reading not hiragana", ln);
             }
-            if !wana_kana::is_kanji::contains_kanji(kanji)
-                || kanji.chars().any(|c| c.is_ascii() && c != ' ')
-            {
-                println!("kanji({}): kanji not kanji/hiragana, `{}`", ln, line);
+
+            if tail.is_some() && context.is_some() {
+                panic!("kanji({}): tail + context are mutually exclusive", ln);
+            }
+
+            let record = records.entry(kanji.to_owned()).or_default();
+            match record.entry(
+                tail.map(|t| t.to_string())
+                    .or_else(|| context.map(str::to_owned))
+                    .unwrap_or_default(),
+            ) {
+                std::collections::hash_map::Entry::Occupied(mut e) => {
+                    // Replace reading if the new one is longer
+                    let val = e.get_mut();
+                    if val.len() < reading.len() {
+                        *val = reading.to_owned();
+                    }
+                }
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(reading.to_owned());
+                }
             }
         }
         _ => panic!("kanji({}): could not parse line, `{}`", ln, line),
@@ -87,49 +108,105 @@ static CLETTERS: phf::Map<char, &[&str]> = phf::phf_map!(
     'v' => &["ゔ"],
 );
 
-type Records = HashMap<String, String>;
+type Records = HashMap<String, HashMap<String, String>>;
 
-fn updaterec(
-    records: &mut Records,
-    kanji: &str,
-    reading: &str,
-    tail: Option<char>,
-    context: &[&str],
-) {
-    if !context.is_empty() {
-        eprintln!("skipping `{}` with context {:?}", kanji, context);
-        return;
-    }
+#[derive(Default)]
+struct KanjiString(String);
 
-    match tail {
-        Some(tail) => {
-            if let Some(cltrs) = CLETTERS.get(&tail) {
-                cltrs.iter().for_each(|c| {
-                    updaterec(
-                        records,
-                        &format!("{}{}", kanji, c),
-                        &format!("{}{}", reading, c),
-                        None,
-                        context,
-                    )
-                });
-            } else {
-                panic!("invalid tail: {}", tail);
-            }
-        }
-        None => {
-            records
-                .entry(kanji.to_owned())
-                .or_insert_with(|| reading.to_owned());
-        }
+#[derive(Default)]
+struct Readings(HashMap<String, String>);
+
+impl Encodable for KanjiString {
+    fn encode(&self) -> Vec<u8> {
+        self.0
+            .encode_utf16()
+            .flat_map(|c16| [((c16 & 0xff00) >> 8) as u8, (c16 & 0xff) as u8])
+            .collect()
     }
 }
 
-fn generate_kanji_dict() -> String {
+impl PhfHash for KanjiString {
+    fn phf_hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.phf_hash(state)
+    }
+}
+
+fn enc_hiragana(buf: &mut Vec<u8>, text: &str) {
+    text.chars().for_each(|c| {
+        if wana_kana::utils::is_char_hiragana(c) {
+            let c_enc = match c {
+                '\u{30fc}' => 0x7f,
+                _ => {
+                    let c_enc = (c as u32 - wana_kana::constants::HIRAGANA_START)
+                        .try_into()
+                        .unwrap();
+                    if c_enc > 127 {
+                        panic!("char `{}` > 127", c);
+                    }
+                    c_enc
+                }
+            };
+            buf.push(c_enc);
+        } else {
+            panic!("text `{}` is not pure hiragana", text)
+        }
+    });
+}
+
+impl Encodable for Readings {
+    fn encode(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        for (k, reading) in &self.0 {
+            // The default reading is encoded at the last position
+            if k.is_empty() {
+                continue;
+            }
+
+            // Add separator
+            if !buf.is_empty() {
+                buf.push(0xff);
+            }
+
+            if k.is_ascii() {
+                // Tail: `kか`
+                if k.len() != 1 {
+                    panic!("invalid tail: `{}`", k);
+                }
+
+                buf.push(k.as_bytes()[0] | 0x80);
+                enc_hiragana(&mut buf, reading);
+            } else {
+                // Context: `しょくSそん`
+                enc_hiragana(&mut buf, reading);
+                buf.push(0x80);
+                enc_hiragana(&mut buf, k);
+            }
+        }
+
+        // Default reading last
+        if let Some(reading) = self.0.get("") {
+            // Add separator
+            if !buf.is_empty() {
+                buf.push(0xff);
+            }
+
+            enc_hiragana(&mut buf, reading);
+        }
+
+        buf
+    }
+}
+
+fn generate_kanji_dict() -> Vec<u8> {
     let mut records = Records::default();
     parse_dict(&mut records, Path::new("dict/kakasidict.utf8"));
 
-    String::new()
+    let mut phfmap = phfbin_gen::Map::<KanjiString, Readings>::default();
+    for (kanji, readings) in records {
+        phfmap.entry(KanjiString(kanji), Readings(readings));
+    }
+    phfmap.build()
 }
 
 fn generate_syn_dict() -> String {
@@ -146,7 +223,7 @@ fn generate_syn_dict() -> String {
     }
 
     format!(
-        "#[rustfmt::skip]\npub static SYN_DICT: phf::Map<char, char> = {};\n",
+        "#[rustfmt::skip]\npub(crate) static SYN_DICT: phf::Map<char, char> = {};\n",
         phf_map.build()
     )
 }
@@ -208,10 +285,10 @@ fn parse_syn_ln(dict: &mut HashMap<char, char>, line: &str) {
 fn main() {
     let code_header = r#"// This file is automatically generated using the kakasi-codegen crate. DO NOT EDIT.
 "#;
-    let code_kanji_dict = generate_kanji_dict();
+    let kanji_dict_bytes = generate_kanji_dict();
+    std::fs::write("kanji_dict.bin", &kanji_dict_bytes).unwrap();
+
     let code_syn_dict = generate_syn_dict();
-
-    let code = format!("{}\n{}\n{}", code_header, code_kanji_dict, code_syn_dict);
-
-    std::fs::write("dict.rs", &code).unwrap();
+    let code = format!("{}\n{}", code_header, code_syn_dict);
+    std::fs::write("syn_dict.rs", &code).unwrap();
 }

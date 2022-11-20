@@ -1,7 +1,55 @@
+mod phfbin;
+mod syn_dict;
+mod types;
+
+pub use types::KakasiResult;
+
 use std::borrow::Cow;
 
-pub fn convert(text: &str) -> String {
-    convert_kanji(text, "").0
+use unicode_normalization::UnicodeNormalization;
+
+use phfbin::PhfMap;
+use types::{KanjiString, Readings};
+
+const KANJI_DICT: &[u8] = include_bytes!("./kanji_dict.bin");
+
+static CLETTERS: phf::Map<u8, &[char]> = phf::phf_map!(
+    b'a' => &['あ', 'ぁ', 'っ', 'わ', 'ゎ'],
+    b'i' => &['い', 'ぃ', 'っ', 'ゐ'],
+    b'u' => &['う', 'ぅ', 'っ'],
+    b'e' => &['え', 'ぇ', 'っ', 'ゑ'],
+    b'o' => &['お', 'ぉ', 'っ'],
+    b'k' => &['か', 'ゕ', 'き', 'く', 'け', 'ゖ', 'こ', 'っ'],
+    b'g' => &['が', 'ぎ', 'ぐ', 'げ', 'ご', 'っ'],
+    b's' => &['さ', 'し', 'す', 'せ', 'そ', 'っ'],
+    b'z' => &['ざ', 'じ', 'ず', 'ぜ', 'ぞ', 'っ'],
+    b'j' => &['ざ', 'じ', 'ず', 'ぜ', 'ぞ', 'っ'],
+    b't' => &['た', 'ち', 'つ', 'て', 'と', 'っ'],
+    b'd' => &['だ', 'ぢ', 'づ', 'で', 'ど', 'っ'],
+    b'c' => &['ち', 'っ'],
+    b'n' => &['な', 'に', 'ぬ', 'ね', 'の', 'ん'],
+    b'h' => &['は', 'ひ', 'ふ', 'へ', 'ほ', 'っ'],
+    b'b' => &['ば', 'び', 'ぶ', 'べ', 'ぼ', 'っ'],
+    b'f' => &['ふ', 'っ'],
+    b'p' => &['ぱ', 'ぴ', 'ぷ', 'ぺ', 'ぽ', 'っ'],
+    b'm' => &['ま', 'み', 'む', 'め', 'も'],
+    b'y' => &['や', 'ゃ', 'ゆ', 'ゅ', 'よ', 'ょ'],
+    b'r' => &['ら', 'り', 'る', 'れ', 'ろ'],
+    b'w' => &['わ', 'ゐ', 'ゑ', 'ゎ', 'を', 'っ'],
+    b'v' => &['ゔ'],
+);
+
+pub fn convert(text: &str) -> KakasiResult {
+    let dict = PhfMap::new(KANJI_DICT);
+
+    // TODO: char conversion should be done with iterators
+    let text = text.nfkc().collect::<String>();
+    let text = convert_syn(&text);
+
+    let hiragana = convert_kanji(&text, "", &dict).0;
+    let romaji = wana_kana::to_romaji::to_romaji(&hiragana);
+
+    KakasiResult { hiragana, romaji }
 }
 
 /// Convert the leading kanji from the input string to hiragana
@@ -19,28 +67,47 @@ pub fn convert(text: &str) -> String {
 ///
 /// * `0` - String of hiragana
 /// * `1` -  Number of converted chars from the input string
-fn convert_kanji(text: &str, btext: &str) -> (String, usize) {
+fn convert_kanji(text: &str, btext: &str, dict: &PhfMap) -> (String, usize) {
     let mut translation = None;
     let mut n_c = 0;
+    let mut char_indices = text.char_indices().peekable();
 
-    for (i, c) in text.char_indices() {
+    while let Some((i, c)) = char_indices.next() {
         let kanji = &text[0..i + c.len_utf8()];
 
-        let this_tl = kakasi_dict::lookup_kanji(kanji).and_then(|readings| {
-            readings
-                .iter()
-                .filter_map(|(reading, context)| {
-                    if context.is_empty() {
-                        Some((reading, false))
-                    } else if context.contains(btext) {
-                        Some((reading, true))
-                    } else {
-                        None
+        let this_tl = dict
+            .get::<KanjiString, Readings>(KanjiString::new(kanji))
+            .and_then(|readings| {
+                readings.iter().find_map(|r| match r {
+                    types::Reading::Simple { hira } => Some(hira),
+                    types::Reading::Tail { mut hira, ch } => {
+                        char_indices.peek().and_then(|(_, next_c)| {
+                            // Shortcut if the next character is not hiragana
+                            if wana_kana::utils::is_char_hiragana(*next_c) {
+                                CLETTERS.get(&ch).and_then(|cltr| {
+                                    if cltr.contains(next_c) {
+                                        // Add the next character to the char count
+                                        n_c += 1;
+                                        hira.push(*next_c);
+                                        Some(hira)
+                                    } else {
+                                        None
+                                    }
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                    }
+                    types::Reading::Context { hira, ctx } => {
+                        if btext.contains(&ctx) {
+                            Some(hira)
+                        } else {
+                            None
+                        }
                     }
                 })
-                .max_by_key(|x| x.1)
-                .map(|(tl, _)| *tl)
-        });
+            });
 
         match this_tl {
             Some(this_tl) => translation = Some(this_tl),
@@ -60,7 +127,11 @@ fn convert_kanji(text: &str, btext: &str) -> (String, usize) {
 fn convert_syn(text: &str) -> Cow<str> {
     let mut replacements = text
         .char_indices()
-        .filter_map(|(i, c)| kakasi_dict::lookup_syn(&c).map(|r_char| (i, c.len_utf8(), *r_char)))
+        .filter_map(|(i, c)| {
+            syn_dict::SYN_DICT
+                .get(&c)
+                .map(|r_char| (i, c.len_utf8(), *r_char))
+        })
         .peekable();
 
     if replacements.peek().is_none() {
@@ -95,7 +166,8 @@ mod tests {
     #[rstest]
     #[case("会っAbc", "あっ", 2)]
     fn t_convert_kanji(#[case] text: &str, #[case] expect: &str, #[case] expect_n: usize) {
-        let (res, n) = convert_kanji(text, "");
+        let dict = PhfMap::new(KANJI_DICT);
+        let (res, n) = convert_kanji(text, "", &dict);
         assert_eq!(res, expect);
         assert_eq!(n, expect_n);
     }

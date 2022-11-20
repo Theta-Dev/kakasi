@@ -1,3 +1,5 @@
 /target
 /Cargo.lock
-/codegen/dict.rs
+
+/codegen/kanji_dict.bin
+/codegen/syn_dict.rs
