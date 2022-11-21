@@ -144,8 +144,9 @@ fn convert_kanji(text: &str, btext: &str, dict: &Records) -> (String, usize) {
     while let Some((i, c)) = char_indices.next() {
         let kanji = &text[0..i + c.len_utf8()];
 
-        let this_tl = dict.get(kanji).and_then(|readings| {
-            readings
+        let this_tl = match dict.get(kanji) {
+            Some(readings) => {
+                readings
                 .iter()
                 .find_map(|(k, reading)| {
                     if k.is_empty() {
@@ -178,19 +179,36 @@ fn convert_kanji(text: &str, btext: &str, dict: &Records) -> (String, usize) {
                     }
                 })
                 .or_else(|| readings.get("").cloned())
-        });
+            },
+            None => break,
+        };
 
         i_c += 1;
         if let Some(tl) = this_tl {
             translation = Some(tl);
             n_c = i_c;
         }
-        if i_c >= 12 {
-            break;
-        }
     }
 
     translation
         .map(|tl| (tl.to_owned(), n_c))
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case("会っAbc", "あっ", 2)]
+    #[case("渋谷", "しぶや", 2)]
+    #[case("東北大学電気通信研究所", "とうほくだいがくでんきつうしんけんきゅうじょ", 11)]
+    #[case("暑中お見舞い申し上げます", "しょちゅうおみまいもうしあげます", 12)]
+    fn t_convert_kanji(#[case] text: &str, #[case] expect: &str, #[case] expect_n: usize) {
+        let dict = crate::get_kanji_dict();
+        let (res, n) = convert_kanji(text, "", &dict);
+        assert_eq!(res, expect);
+        assert_eq!(n, expect_n);
+    }
 }

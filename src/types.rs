@@ -62,8 +62,12 @@ impl Decodable for Readings {
 }
 
 impl Readings {
-    pub fn iter(&self) -> ReadingsIter {
-        ReadingsIter { data: self.0, i: 0 }
+    pub fn iter(&self) -> Option<ReadingsIter> {
+        if self.0.len() == 0 {
+            None
+        } else {
+            Some(ReadingsIter { data: self.0, i: 0 })
+        }
     }
 }
 
@@ -142,7 +146,7 @@ mod tests {
             .get::<KanjiString, Readings>(KanjiString::new("会"))
             .unwrap();
 
-        let res = readings.iter().collect::<Vec<_>>();
+        let res = readings.iter().unwrap().collect::<Vec<_>>();
         dbg!(&res);
     }
 }

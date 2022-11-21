@@ -251,12 +251,36 @@ fn to_romaji_nodc(text: &str) -> String {
     buf
 }
 
-fn generate_kanji_dict() -> Vec<u8> {
+fn insert_placeholders(records: &mut Records) {
+    let mut to_insert = Vec::new();
+
+    for kanji in records.keys() {
+        for (i, c) in kanji.char_indices() {
+            let sub = &kanji[0..i + c.len_utf8()];
+            if !records.contains_key(sub) {
+                to_insert.push(sub.to_owned());
+            }
+        }
+    }
+
+    println!("kanji_dict: {} placeholders", to_insert.len());
+    to_insert.into_iter().for_each(|s| {
+        records.entry(s).or_default();
+    });
+}
+
+fn get_kanji_dict() -> Records {
     let mut records = Records::default();
     parse_dict(&mut records, Path::new("dict/kakasidict.utf8"));
     records = find_redundant_compounds(&records);
-
     println!("kanji_dict: {} entries", records.len());
+    insert_placeholders(&mut records);
+    println!("kanji_dict: {} total items", records.len());
+    records
+}
+
+fn generate_kanji_dict() -> Vec<u8> {
+    let records = get_kanji_dict();
 
     let mut phfmap = phfbin_gen::Map::<KanjiString, Readings>::default();
     for (kanji, readings) in records {

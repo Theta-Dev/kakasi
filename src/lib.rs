@@ -12,7 +12,6 @@ use phfbin::PhfMap;
 use types::{KanjiString, Readings};
 
 const KANJI_DICT: &[u8] = include_bytes!("./kanji_dict.bin");
-const MAX_KANJI_LEN: usize = 7;
 
 static CLETTERS: phf::Map<u8, &[char]> = phf::phf_map!(
     b'a' => &['あ', 'ぁ', 'っ', 'わ', 'ゎ'],
@@ -210,10 +209,9 @@ fn convert_kanji(text: &str, btext: &str, dict: &PhfMap) -> (String, usize) {
     while let Some((i, c)) = char_indices.next() {
         let kanji = &text[0..i + c.len_utf8()];
 
-        let this_tl = dict
-            .get::<KanjiString, Readings>(KanjiString::new(kanji))
-            .and_then(|readings| {
-                readings.iter().find_map(|r| match r {
+        let this_tl = match dict.get::<KanjiString, Readings>(KanjiString::new(kanji)) {
+            Some(readings) => readings.iter().and_then(|mut ri| {
+                ri.find_map(|r| match r {
                     types::Reading::Simple { hira } => Some(hira),
                     types::Reading::Tail { mut hira, ch } => {
                         char_indices.peek().and_then(|(_, next_c)| {
@@ -242,15 +240,14 @@ fn convert_kanji(text: &str, btext: &str, dict: &PhfMap) -> (String, usize) {
                         }
                     }
                 })
-            });
+            }),
+            None => break,
+        };
 
         i_c += 1;
         if let Some(tl) = this_tl {
             translation = Some(tl);
             n_c = i_c;
-        }
-        if i_c >= MAX_KANJI_LEN {
-            break;
         }
     }
 
@@ -304,8 +301,8 @@ mod tests {
     #[rstest]
     #[case("会っAbc", "あっ", 2)]
     #[case("渋谷", "しぶや", 2)]
-    // #[case("渋谷公会堂", "しぶやこうかいどう", 5)]
-    // #[case("家畜衛生試験場", "かちくえいせいしけんじょう", 7)]
+    #[case("東北大学電気通信研究所", "とうほくだいがくでんきつうしんけんきゅうじょ", 11)]
+    #[case("暑中お見舞い申し上げます", "しょちゅうおみまいもうしあげます", 12)]
     fn t_convert_kanji(#[case] text: &str, #[case] expect: &str, #[case] expect_n: usize) {
         let dict = PhfMap::new(KANJI_DICT);
         let (res, n) = convert_kanji(text, "", &dict);

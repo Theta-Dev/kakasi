@@ -13,3 +13,6 @@ phf_generator = "0.11.0"
 phf_codegen = "0.11.1"
 unicode-normalization = "0.1.22"
 wana_kana = "2.1.0"
+
+[dev-dependencies]
+rstest = { version = "0.15.0", default-features = false }
