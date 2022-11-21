@@ -39,9 +39,8 @@ static CLETTERS: phf::Map<u8, &[char]> = phf::phf_map!(
     b'v' => &['ゔ'],
 );
 
-const ENDMARK: [char; 11] = [
-    ')', ']', '!', '.', ',', '\u{3001}', '\u{3002}', '\u{ff1f}', '\u{ff10}', '\u{ff1e}', '\u{ff1c}',
-];
+const SENTENCE_END: [char; 4] = ['!', '?', '.', '。'];
+const ENDMARK: [char; 5] = [')', ']', '>', ',', '、'];
 const DASH_SYMBOLS: [char; 4] = ['\u{30FC}', '\u{2015}', '\u{2212}', '\u{FF70}'];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,15 +62,27 @@ pub fn convert(text: &str) -> KakasiResult {
     let mut char_indices = text.char_indices();
     let mut kana_text = String::new();
     let mut prev_type = CharType::Kanji;
+    let mut capitalize = (false, false);
 
     let mut hiragana = String::new();
     let mut romaji = String::new();
 
-    let conv_kana_txt = |kana_text: &mut String, hiragana: &mut String, romaji: &mut String| {
+    let conv_kana_txt = |kana_text: &mut String,
+                         hiragana: &mut String,
+                         romaji: &mut String,
+                         capitalize: &mut (bool, bool)| {
         if !kana_text.is_empty() {
             let h = convert_kana(&kana_text);
             hiragana.push_str(&h);
-            romaji.push_str(&wana_kana::to_romaji::to_romaji(&h));
+            let mut r = wana_kana::to_romaji::to_romaji(&h);
+
+            if capitalize.0 {
+                let done;
+                (r, done) = capitalize_first_c(&r);
+                capitalize.0 = !done;
+            }
+
+            romaji.push_str(&r);
             romaji.push(' ');
         }
     };
@@ -83,14 +94,21 @@ pub fn convert(text: &str) -> KakasiResult {
 
     while let Some((i, c)) = char_indices.next() {
         let output_flag = if ENDMARK.contains(&c) {
-            (CharType::Symbol, true, true, true)
+            (CharType::Symbol, true, true, true, false)
+        } else if SENTENCE_END.contains(&c) {
+            if !capitalize.1 {
+                (romaji, _) = capitalize_first_c(&romaji);
+                capitalize.1 = true;
+            }
+
+            (CharType::Symbol, true, true, true, true)
         } else if DASH_SYMBOLS.contains(&c) {
-            (prev_type, false, false, true)
+            (prev_type, false, false, true, false)
         } else if is_sym(c) {
             if prev_type != CharType::Symbol {
-                (CharType::Symbol, true, false, true)
+                (CharType::Symbol, true, false, true, false)
             } else {
-                (CharType::Symbol, false, true, true)
+                (CharType::Symbol, false, true, true, false)
             }
         } else if wana_kana::utils::is_char_katakana(c) {
             (
@@ -98,6 +116,7 @@ pub fn convert(text: &str) -> KakasiResult {
                 prev_type != CharType::Katakana,
                 false,
                 true,
+                false,
             )
         } else if wana_kana::utils::is_char_hiragana(c) {
             (
@@ -105,11 +124,18 @@ pub fn convert(text: &str) -> KakasiResult {
                 prev_type != CharType::Hiragana,
                 false,
                 true,
+                false,
             )
         } else if c.is_ascii() {
-            (CharType::Alpha, prev_type != CharType::Alpha, false, true)
+            (
+                CharType::Alpha,
+                prev_type != CharType::Alpha,
+                false,
+                true,
+                false,
+            )
         } else if wana_kana::utils::is_char_kanji(c) {
-            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji);
+            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji, &mut capitalize);
             let (t, n) = convert_kanji(&text[i..], &kana_text, &dict);
 
             if n > 0 {
@@ -117,40 +143,44 @@ pub fn convert(text: &str) -> KakasiResult {
                 for _ in 1..n {
                     char_indices.next();
                 }
-                (CharType::Kanji, false, false, false)
+                (CharType::Kanji, false, false, false, false)
             } else {
                 // Unknown kanji
                 kana_text.clear();
                 // TODO: FOR TESTING
                 hiragana.push_str("🯄");
                 romaji.push_str("🯄");
-                (CharType::Kanji, true, false, false)
+                (CharType::Kanji, true, false, false, false)
             }
         } else if matches!(c as u32, 0xf000..=0xfffd | 0x10000..=0x10ffd) {
             // PUA: ignore and drop
-            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji);
+            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji, &mut capitalize);
             kana_text.clear();
-            (prev_type, false, false, false)
+            (prev_type, false, false, false, false)
         } else {
-            (prev_type, true, true, true)
+            (prev_type, true, true, true, false)
         };
 
         prev_type = output_flag.0;
 
         if output_flag.1 && output_flag.2 {
             kana_text.push(c);
-            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji);
+            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji, &mut capitalize);
             kana_text.clear()
         } else if output_flag.1 && output_flag.3 {
-            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji);
+            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji, &mut capitalize);
             kana_text = c.to_string();
         } else if output_flag.3 {
             kana_text.push(c);
         }
+
+        if output_flag.4 {
+            capitalize.0 = true;
+        }
     }
 
     // Convert last word
-    conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji);
+    conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji, &mut capitalize);
     // Remove trailing space
     romaji.pop();
 
@@ -208,6 +238,7 @@ fn convert_kanji(text: &str, btext: &str, dict: &PhfMap) -> (String, usize) {
 
     while let Some((i, c)) = char_indices.next() {
         let kanji = &text[0..i + c.len_utf8()];
+        let mut more_chars = 0;
 
         let this_tl = match dict.get::<KanjiString, Readings>(KanjiString::new(kanji)) {
             Some(readings) => readings.iter().and_then(|mut ri| {
@@ -220,7 +251,7 @@ fn convert_kanji(text: &str, btext: &str, dict: &PhfMap) -> (String, usize) {
                                 CLETTERS.get(&ch).and_then(|cltr| {
                                     if cltr.contains(next_c) {
                                         // Add the next character to the char count
-                                        i_c += 1;
+                                        more_chars += 1;
                                         hira.push(*next_c);
                                         Some(hira)
                                     } else {
@@ -247,7 +278,7 @@ fn convert_kanji(text: &str, btext: &str, dict: &PhfMap) -> (String, usize) {
         i_c += 1;
         if let Some(tl) = this_tl {
             translation = Some(tl);
-            n_c = i_c;
+            n_c = i_c + more_chars;
         }
     }
 
@@ -285,10 +316,34 @@ fn convert_syn(text: &str) -> Cow<str> {
     Cow::Owned(new)
 }
 
+fn capitalize_first_c(text: &str) -> (String, bool) {
+    let mut done = false;
+    let res = text
+        .chars()
+        .map(|c| {
+            if !done && c.is_alphanumeric() {
+                done = true;
+                c.to_ascii_uppercase()
+            } else {
+                c
+            }
+        })
+        .collect::<String>();
+    (res, done)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    #[rstest]
+    #[case("\u{ff1f}", "?")]
+    #[case("\u{ff1e}", ">")]
+    fn t_normalize(#[case] text: &str, #[case] expect: &str) {
+        let res = text.nfkc().collect::<String>();
+        assert_eq!(res, expect);
+    }
 
     #[rstest]
     #[case("Abc", "Abc")]
@@ -301,12 +356,57 @@ mod tests {
     #[rstest]
     #[case("会っAbc", "あっ", 2)]
     #[case("渋谷", "しぶや", 2)]
-    #[case("東北大学電気通信研究所", "とうほくだいがくでんきつうしんけんきゅうじょ", 11)]
+    #[case(
+        "東北大学電気通信研究所",
+        "とうほくだいがくでんきつうしんけんきゅうじょ",
+        11
+    )]
     #[case("暑中お見舞い申し上げます", "しょちゅうおみまいもうしあげます", 12)]
     fn t_convert_kanji(#[case] text: &str, #[case] expect: &str, #[case] expect_n: usize) {
         let dict = PhfMap::new(KANJI_DICT);
         let (res, n) = convert_kanji(text, "", &dict);
         assert_eq!(res, expect);
         assert_eq!(n, expect_n);
+    }
+
+    #[rstest]
+    #[case("", "", "")]
+    #[case("構成", "こうせい", "kousei")]
+    #[case("好き", "すき", "suki")]
+    #[case("大きい", "おおきい", "ookii")]
+    #[case("かんたん", "かんたん", "kantan")]
+    #[case("にゃ", "にゃ", "nya")]
+    #[case("っき", "っき", "kki")]
+    #[case("っふぁ", "っふぁ", "ffua")] // "ffa"
+    #[case("キャ", "きゃ", "kya")]
+    #[case("キュ", "きゅ", "kyu")]
+    #[case("キョ", "きょ", "kyo")]
+    #[case("。", "。", ".")]
+    #[case(
+        "漢字とひらがな交じり文",
+        "かんじとひらがなまじりぶん",
+        "kanji tohiragana majiri bun"
+    )]
+    #[case(
+        "Alphabet 123 and 漢字",
+        "Alphabet 123 and かんじ",
+        "Alphabet 123 and  kanji"
+    )] // TODO: double space
+    #[case("日経新聞", "にっけいしんぶん", "nikkei shinbun")]
+    #[case("日本国民は、", "にほんこくみんは、", "nihonkokumin ha,")]
+    #[case(
+        "私がこの子を助けなきゃいけないってことだよね",
+        "わたしがこのこをたすけなきゃいけないってことだよね",
+        "watashi gakono ko wo tasuke nakyaikenaittekotodayone"
+    )]
+    #[case("やったー", "やったー", "yatta-")]
+    #[case("でっでー", "でっでー", "dedde-")]
+    #[case("てんさーふろー", "てんさーふろー", "tensa-furo-")]
+    #[case("オレンジ色", "おれんじいろ", "orenji iro")]
+    #[case("檸檬は、レモン色", "れもんは、れもんいろ", "remon ha, remon iro")]
+    fn romanize(#[case] text: &str, #[case] hiragana: &str, #[case] romaji: &str) {
+        let res = convert(text);
+        assert_eq!(res.hiragana, hiragana);
+        assert_eq!(res.romaji, romaji);
     }
 }

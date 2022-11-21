@@ -26,4 +26,3 @@ rstest = { version = "0.15.0", default-features = false }
 codegen-units = 1
 opt-level = 'z'
 lto = true
-strip = true

@@ -23,6 +23,7 @@ pub enum Reading {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
 pub struct KakasiResult {
     pub hiragana: String,
     pub romaji: String,

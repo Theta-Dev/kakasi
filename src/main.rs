@@ -1,6 +1,11 @@
 fn main() {
+    let mut txt = String::new();
     for line in std::io::stdin().lines() {
-        let res = kakasi::convert(&line.unwrap());
-        println!("{}\n{}\n\n", res.hiragana, res.romaji);
+        if let Ok(line) = line {
+            txt.push_str(&line);
+            txt.push('\n');
+        }
     }
+    let res = kakasi::convert(&txt);
+    println!("{}", res.romaji);
 }
