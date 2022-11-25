@@ -64,7 +64,7 @@ impl Decodable for Readings {
 
 impl Readings {
     pub fn iter(&self) -> Option<ReadingsIter> {
-        if self.0.len() == 0 {
+        if self.0.is_empty() {
             None
         } else {
             Some(ReadingsIter { data: self.0, i: 0 })

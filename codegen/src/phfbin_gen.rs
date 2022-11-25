@@ -1,4 +1,4 @@
-use phf_shared::{PhfHash};
+use phf_shared::PhfHash;
 
 /// A builder for the `phf::Map` type.
 #[derive(Default)]

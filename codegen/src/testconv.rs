@@ -57,7 +57,7 @@ pub fn convert(text: &str, dict: &Records) -> String {
             if !kana_text.is_empty() {
                 hiragana.push_str(&convert_kana(&kana_text));
             }
-            let (t, n) = convert_kanji(&text[i..], &kana_text, &dict);
+            let (t, n) = convert_kanji(&text[i..], &kana_text, dict);
 
             if n > 0 {
                 kana_text = t;
@@ -69,7 +69,7 @@ pub fn convert(text: &str, dict: &Records) -> String {
                 // Unknown kanji
                 kana_text.clear();
                 // TODO: FOR TESTING
-                hiragana.push_str("🯄");
+                hiragana.push_str("[?]");
                 (CharType::Kanji, true, false, false)
             }
         } else if matches!(c as u32, 0xf000..=0xfffd | 0x10000..=0x10ffd) {
@@ -147,39 +147,41 @@ fn convert_kanji(text: &str, btext: &str, dict: &Records) -> (String, usize) {
         let this_tl = match dict.get(kanji) {
             Some(readings) => {
                 readings
-                .iter()
-                .find_map(|(k, reading)| {
-                    if k.is_empty() {
-                        None
-                    } else if let Some(cltr) = CLETTERS.get(&k.chars().next().unwrap_or_default()) {
-                        char_indices.peek().and_then(|(_, next_c)| {
-                            // Shortcut if the next character is not hiragana
-                            if wana_kana::utils::is_char_hiragana(*next_c) {
-                                if cltr.contains(&&next_c.to_string().as_str()) {
-                                    // Add the next character to the char count
-                                    i_c += 1;
-                                    let mut hira = reading.to_owned();
-                                    hira.push(*next_c);
-                                    return Some(hira);
+                    .iter()
+                    .find_map(|(k, reading)| {
+                        if k.is_empty() {
+                            None
+                        } else if let Some(cltr) =
+                            CLETTERS.get(&k.chars().next().unwrap_or_default())
+                        {
+                            char_indices.peek().and_then(|(_, next_c)| {
+                                // Shortcut if the next character is not hiragana
+                                if wana_kana::utils::is_char_hiragana(*next_c) {
+                                    if cltr.contains(&next_c.to_string().as_str()) {
+                                        // Add the next character to the char count
+                                        i_c += 1;
+                                        let mut hira = reading.to_owned();
+                                        hira.push(*next_c);
+                                        Some(hira)
+                                    } else {
+                                        None
+                                    }
                                 } else {
                                     None
                                 }
+                            })
+                        } else if wana_kana::is_hiragana::is_hiragana(k) {
+                            if btext.contains(reading) {
+                                Some(reading.to_owned())
                             } else {
                                 None
                             }
-                        })
-                    } else if wana_kana::is_hiragana::is_hiragana(&k) {
-                        if btext.contains(reading) {
-                            Some(reading.to_owned())
                         } else {
-                            None
+                            panic!("invalid reading key")
                         }
-                    } else {
-                        panic!("invalid reading key")
-                    }
-                })
-                .or_else(|| readings.get("").cloned())
-            },
+                    })
+                    .or_else(|| readings.get("").cloned())
+            }
             None => break,
         };
 
@@ -191,7 +193,7 @@ fn convert_kanji(text: &str, btext: &str, dict: &Records) -> (String, usize) {
     }
 
     translation
-        .map(|tl| (tl.to_owned(), n_c))
+        .map(|tl| (tl, n_c))
         .unwrap_or_default()
 }
 
@@ -203,7 +205,11 @@ mod tests {
     #[rstest]
     #[case("会っAbc", "あっ", 2)]
     #[case("渋谷", "しぶや", 2)]
-    #[case("東北大学電気通信研究所", "とうほくだいがくでんきつうしんけんきゅうじょ", 11)]
+    #[case(
+        "東北大学電気通信研究所",
+        "とうほくだいがくでんきつうしんけんきゅうじょ",
+        11
+    )]
     #[case("暑中お見舞い申し上げます", "しょちゅうおみまいもうしあげます", 12)]
     fn t_convert_kanji(#[case] text: &str, #[case] expect: &str, #[case] expect_n: usize) {
         let dict = crate::get_kanji_dict();

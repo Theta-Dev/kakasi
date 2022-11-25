@@ -39,17 +39,21 @@ static CLETTERS: phf::Map<u8, &[char]> = phf::phf_map!(
     b'v' => &['ゔ'],
 );
 
-const SENTENCE_END: [char; 4] = ['!', '?', '.', '。'];
-const ENDMARK: [char; 5] = [')', ']', '>', ',', '、'];
-const DASH_SYMBOLS: [char; 4] = ['\u{30FC}', '\u{2015}', '\u{2212}', '\u{FF70}'];
+const PCT_TRAILING: [char; 12] = ['.', ',', ':', ';', '!', '?', ')', ']', '}', '>', '’', '”'];
+const PCT_LEADING: [char; 6] = ['(', '[', '<', '{', '‘', '“'];
+const PCT_JOINING: [char; 2] = ['/', '~'];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CharType {
     Kanji,
     Katakana,
     Hiragana,
-    Symbol,
-    Alpha,
+    Whitespace,
+    Other,
+    LeadingPunct,
+    TrailingPunct,
+    JoiningPunct,
+    Numeric,
 }
 
 pub fn convert(text: &str) -> KakasiResult {
@@ -59,148 +63,135 @@ pub fn convert(text: &str) -> KakasiResult {
     let text = text.nfkc().collect::<String>();
     let text = convert_syn(&text);
 
-    let mut char_indices = text.char_indices();
-    let mut kana_text = String::new();
-    let mut prev_type = CharType::Kanji;
-    let mut capitalize = (false, false);
+    let mut char_indices = text.char_indices().peekable();
+    let mut kana_buf = String::new();
+    let mut prev_buf_type = CharType::Whitespace;
+    let mut prev_acc_type = CharType::Whitespace;
+    let mut cap = (false, false);
 
-    let mut hiragana = String::new();
-    let mut romaji = String::new();
+    let mut res = KakasiResult::default();
 
-    let conv_kana_txt = |kana_text: &mut String,
-                         hiragana: &mut String,
-                         romaji: &mut String,
-                         capitalize: &mut (bool, bool)| {
-        if !kana_text.is_empty() {
-            let h = convert_kana(&kana_text);
-            hiragana.push_str(&h);
-            let mut r = wana_kana::to_romaji::to_romaji(&h);
+    let conv_kana_buf = |kana_buf: &mut String,
+                         res: &mut KakasiResult,
+                         prev_type: CharType,
+                         cap: &mut (bool, bool)| {
+        if !kana_buf.is_empty() {
+            res.hiragana.push_str(&convert_kana(kana_buf));
+            let mut rom = wana_kana::to_romaji::to_romaji(kana_buf);
 
-            if capitalize.0 {
+            if cap.0 {
                 let done;
-                (r, done) = capitalize_first_c(&r);
-                capitalize.0 = !done;
+                (rom, done) = capitalize_first_c(&rom);
+                cap.0 = !done;
+
+                if !cap.1 {
+                    (res.romaji, _) = capitalize_first_c(&res.romaji);
+                    cap.1 = true;
+                }
             }
 
-            romaji.push_str(&r);
-            romaji.push(' ');
+            ensure_trailing_space(
+                &mut res.romaji,
+                prev_type != CharType::LeadingPunct && prev_type != CharType::JoiningPunct,
+            );
+            res.romaji.push_str(&rom);
+
+            kana_buf.clear();
         }
     };
 
-    // output_flag
-    // means (output buffer?, output text[i]?, copy to buffer and increment i?)
-    // possible (False, True, True), (True, False, False), (True, True, True)
-    //          (False, False, True)
-
     while let Some((i, c)) = char_indices.next() {
-        let output_flag = if ENDMARK.contains(&c) {
-            (CharType::Symbol, true, true, true, false)
-        } else if SENTENCE_END.contains(&c) {
-            if !capitalize.1 {
-                (romaji, _) = capitalize_first_c(&romaji);
-                capitalize.1 = true;
+        // Type of current char |
+        if wana_kana::utils::is_char_hiragana(c) {
+            if prev_buf_type != CharType::Hiragana
+                && !(prev_buf_type == CharType::Katakana && c == 'ー')
+            {
+                conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
             }
-
-            (CharType::Symbol, true, true, true, true)
-        } else if DASH_SYMBOLS.contains(&c) {
-            (prev_type, false, false, true, false)
-        } else if is_sym(c) {
-            if prev_type != CharType::Symbol {
-                (CharType::Symbol, true, false, true, false)
-            } else {
-                (CharType::Symbol, false, true, true, false)
+            kana_buf.push(c);
+            prev_buf_type = CharType::Hiragana;
+        } else if wana_kana::utils::is_char_in_range(c, 0x30a1, 0x30fa) {
+            if prev_buf_type != CharType::Katakana {
+                conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
             }
-        } else if wana_kana::utils::is_char_katakana(c) {
-            (
-                CharType::Katakana,
-                prev_type != CharType::Katakana,
-                false,
-                true,
-                false,
-            )
-        } else if wana_kana::utils::is_char_hiragana(c) {
-            (
-                CharType::Hiragana,
-                prev_type != CharType::Hiragana,
-                false,
-                true,
-                false,
-            )
-        } else if c.is_ascii() {
-            (
-                CharType::Alpha,
-                prev_type != CharType::Alpha,
-                false,
-                true,
-                false,
-            )
+            kana_buf.push(c);
+            prev_buf_type = CharType::Katakana;
         } else if wana_kana::utils::is_char_kanji(c) {
-            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji, &mut capitalize);
-            let (t, n) = convert_kanji(&text[i..], &kana_text, &dict);
+            let (t, n) = convert_kanji(&text[i..], &kana_buf, &dict);
+            conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
 
             if n > 0 {
-                kana_text = t;
+                kana_buf = t;
+                conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
                 for _ in 1..n {
                     char_indices.next();
                 }
-                (CharType::Kanji, false, false, false, false)
             } else {
                 // Unknown kanji
-                kana_text.clear();
                 // TODO: FOR TESTING
-                hiragana.push_str("🯄");
-                romaji.push_str("🯄");
-                (CharType::Kanji, true, false, false, false)
+                res.hiragana.push_str("[?]");
+                res.romaji.push_str("[?]");
             }
-        } else if matches!(c as u32, 0xf000..=0xfffd | 0x10000..=0x10ffd) {
-            // PUA: ignore and drop
-            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji, &mut capitalize);
-            kana_text.clear();
-            (prev_type, false, false, false, false)
+            prev_acc_type = CharType::Kanji;
+        } else if c.is_whitespace() {
+            conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
+            res.hiragana.push(c);
+            res.romaji.push(c);
+            prev_acc_type = CharType::Whitespace;
+        } else if c == '・' {
+            conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
+            res.hiragana.push(c);
+            res.romaji.push(' ');
+            prev_acc_type = CharType::Whitespace;
         } else {
-            (prev_type, true, true, true, false)
+            conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
+
+            res.hiragana.push(c);
+            let c_rom = wana_kana::to_romaji::to_romaji(&c.to_string());
+            let c_rom_char = c_rom.chars().next().unwrap_or('x');
+
+            let char_type = if PCT_LEADING.contains(&c_rom_char) {
+                CharType::LeadingPunct
+            } else if c.is_ascii_digit()
+                || ((c == '.' || c == ',')
+                    && prev_acc_type == CharType::Numeric
+                    && char_indices
+                        .peek()
+                        .map(|(_, nc)| nc.is_ascii_digit())
+                        .unwrap_or_default())
+            {
+                CharType::Numeric
+            } else if PCT_TRAILING.contains(&c_rom_char) {
+                CharType::TrailingPunct
+            } else if PCT_JOINING.contains(&c_rom_char) {
+                CharType::JoiningPunct
+            } else {
+                CharType::Other
+            };
+
+            if (prev_acc_type != CharType::Other && prev_acc_type != CharType::Numeric)
+                || wana_kana::utils::is_char_japanese_punctuation(c)
+            {
+                ensure_trailing_space(
+                    &mut res.romaji,
+                    prev_acc_type != CharType::LeadingPunct
+                        && prev_acc_type != CharType::JoiningPunct
+                        && char_type != CharType::TrailingPunct
+                        && char_type != CharType::JoiningPunct,
+                );
+            }
+            res.romaji.push_str(&c_rom);
+
+            if c_rom_char == '.' && char_type != CharType::Numeric {
+                cap.0 = true;
+            }
+
+            prev_acc_type = char_type;
         };
-
-        prev_type = output_flag.0;
-
-        if output_flag.1 && output_flag.2 {
-            kana_text.push(c);
-            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji, &mut capitalize);
-            kana_text.clear()
-        } else if output_flag.1 && output_flag.3 {
-            conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji, &mut capitalize);
-            kana_text = c.to_string();
-        } else if output_flag.3 {
-            kana_text.push(c);
-        }
-
-        if output_flag.4 {
-            capitalize.0 = true;
-        }
     }
 
-    // Convert last word
-    conv_kana_txt(&mut kana_text, &mut hiragana, &mut romaji, &mut capitalize);
-    // Remove trailing space
-    romaji.pop();
-
-    KakasiResult { hiragana, romaji }
-}
-
-fn is_sym(c: char) -> bool {
-    matches!(c as u32,
-        0x3000..=0x3020 |
-        0x3030..=0x303F |
-        0x0391..=0x03A1 |
-        0x03A3..=0x03A9 |
-        0x03B1..=0x03C9 |
-        0x0410..= 0x044F |
-        0xFF01..=0xFF1A |
-        0x00A1..=0x00FF |
-        0xFF20..=0xFF5E |
-        0x0451 |
-        0x0401
-    )
+    conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
+    res
 }
 
 fn convert_kana(text: &str) -> String {
@@ -231,7 +222,7 @@ fn convert_kana(text: &str) -> String {
 /// * `0` - String of hiragana
 /// * `1` -  Number of converted chars from the input string
 fn convert_kanji(text: &str, btext: &str, dict: &PhfMap) -> (String, usize) {
-    let mut translation = None;
+    let mut translation: Option<String> = None;
     let mut i_c = 0;
     let mut n_c = 0;
     let mut char_indices = text.char_indices().peekable();
@@ -272,7 +263,18 @@ fn convert_kanji(text: &str, btext: &str, dict: &PhfMap) -> (String, usize) {
                     }
                 })
             }),
-            None => break,
+            None => {
+                // Iteration mark (repeats previous kanji)
+                if c == '々' {
+                    if n_c < 2 {
+                        return translation
+                            .map(|tl| (tl.to_owned() + &tl, n_c + 1))
+                            .unwrap_or_default();
+                    }
+                }
+
+                break;
+            }
         };
 
         i_c += 1;
@@ -283,7 +285,7 @@ fn convert_kanji(text: &str, btext: &str, dict: &PhfMap) -> (String, usize) {
     }
 
     translation
-        .map(|tl| (tl.to_owned(), n_c))
+        .map(|tl| (tl, n_c))
         .unwrap_or_default()
 }
 
@@ -330,6 +332,20 @@ fn capitalize_first_c(text: &str) -> (String, bool) {
         })
         .collect::<String>();
     (res, done)
+}
+
+fn ensure_trailing_space(text: &mut String, ts: bool) {
+    if text.is_empty() || text.ends_with('\n') {
+        return;
+    }
+
+    if text.ends_with(' ') {
+        if !ts {
+            text.pop();
+        }
+    } else if ts {
+        text.push(' ');
+    }
 }
 
 #[cfg(test)]
@@ -390,8 +406,8 @@ mod tests {
     #[case(
         "Alphabet 123 and 漢字",
         "Alphabet 123 and かんじ",
-        "Alphabet 123 and  kanji"
-    )] // TODO: double space
+        "Alphabet 123 and kanji"
+    )]
     #[case("日経新聞", "にっけいしんぶん", "nikkei shinbun")]
     #[case("日本国民は、", "にほんこくみんは、", "nihonkokumin ha,")]
     #[case(
@@ -404,6 +420,31 @@ mod tests {
     #[case("てんさーふろー", "てんさーふろー", "tensa-furo-")]
     #[case("オレンジ色", "おれんじいろ", "orenji iro")]
     #[case("檸檬は、レモン色", "れもんは、れもんいろ", "remon ha, remon iro")]
+    #[case("血液1μL", "けつえき1μL", "ketsueki 1μL")]
+    #[case("「和風」", "「わふう」", "‘wafuu’")]
+    #[case("て「わ", "て「わ", "te ‘wa")]
+    #[case("号・雅", "ごう・まさ", "gou masa")]
+    #[case("ビーバーが", "びいばあが", "bii baaga")]
+    #[case(
+        "安藤 和風（あんどう はるかぜ、慶応2年1月12日（1866年2月26日） - 昭和11年（1936年）12月26日）は、日本のジャーナリスト、マスメディア経営者、俳人、郷土史研究家。通名および俳号は「和風」をそのまま音読みして「わふう」。秋田県の地方紙「秋田魁新報」の事業拡大に貢献し、秋田魁新報社三大柱石の一人と称された。「魁の安藤か、安藤の魁か」と言われるほど、新聞記者としての名声を全国にとどろかせた[4]。",
+        "あんどう わふう(あんどう はるかぜ、けいおう2ねん1がつ12にち(1866ねん2がつ26にち) - しょうわ11ねん(1936ねん)12がつ26にち)は、にっぽんのじゃあなりすと、ますめでぃあけいえいしゃ、はいじん、きょうどしけんきゅうか。とおりめいおよびはいごうは「わふう」をそのままおんよみして「わふう」。あきたけんのちほうし「あきたかいしんぽう」のじぎょうかくだいにこうけんし、あきたかいしんぽうしゃさんだいちゅうせきのひとりとしょうされた。「かいのあんどうか、あんどうのかいか」といわれるほど、しんぶんきしゃとしてのめいせいをぜんこくにとどろかせた[4]。",
+        "Andou wafuu (andou harukaze, keiou 2 nen 1 gatsu 12 nichi (1866 nen 2 gatsu 26 nichi) - shouwa 11 nen (1936 nen) 12 gatsu 26 nichi) ha, nippon no jaa narisuto, masumedeia keieisha, haijin, kyoudoshi kenkyuuka. Toori mei oyobi hai gou ha ‘wafuu’ wosonomama on'yomi shite ‘wafuu’. Akitaken no chihoushi ‘akita kai shinpou’ no jigyou kakudai ni kouken shi, akita kai shinpou sha sandai chuuseki no hitori to shousa reta. ‘Kai no andou ka, andou no kai ka’ to iwa reruhodo, shinbunkisha toshiteno meisei wo zenkoku nitodorokaseta [4].",
+    )]
+    #[case(
+        "『ザ・トラベルナース』",
+        "『ざ・とらべるなあす』",
+        "“za toraberunaa su”"
+    )]
+    #[case(
+        "緑黄色社会『ミチヲユケ』Official Video -「ファーストペンギン！」主題歌",
+        "みどりきいろしゃかい『みちをゆけ』Official Video -「ふぁあすとぺんぎん!」しゅだいか",
+        "midori kiiro shakai “michiwoyuke” Official Video - ‘fuaasutopengin!’ shudaika"
+    )]
+    #[case(
+        "MONKEY MAJIK - Running In The Dark【Lyric Video】（日本語字幕付）",
+        "MONKEY MAJIK - Running In The Dark【Lyric Video】(にほんごじまくつき)",
+        "MONKEY MAJIK - Running In The Dark 【Lyric Video 】(nihongo jimaku tsuki)" // TODO: square braces
+    )]
     fn romanize(#[case] text: &str, #[case] hiragana: &str, #[case] romaji: &str) {
         let res = convert(text);
         assert_eq!(res.hiragana, hiragana);
