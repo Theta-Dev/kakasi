@@ -20,60 +20,61 @@ pub fn convert(text: &str) -> KakasiResult {
     let mut kana_buf = String::new();
     let mut prev_buf_type = CharType::Whitespace;
     let mut prev_acc_type = CharType::Whitespace;
-    let mut cap = (false, false);
+    // Capitalization flags
+    // 0: capitalize next word, 1: capitalize first sentence, 2: first sentence capitalized
+    let mut cap = (false, false, false);
 
     let mut res = KakasiResult::default();
 
     let conv_kana_buf = |kana_buf: &mut String,
                          res: &mut KakasiResult,
-                         prev_type: CharType,
-                         cap: &mut (bool, bool)| {
+                         prev_type: &mut CharType,
+                         cap: &mut (bool, bool, bool)| {
         if !kana_buf.is_empty() {
             let hira = convert_katakana(kana_buf);
             res.hiragana.push_str(&hira);
             let mut rom = hiragana_to_romaji(&hira);
 
             if cap.0 {
-                let done;
-                (rom, done) = util::capitalize_first_c(&rom);
-                cap.0 = !done;
-
-                if !cap.1 {
-                    (res.romaji, _) = util::capitalize_first_c(&res.romaji);
-                    cap.1 = true;
-                }
+                rom = util::capitalize_first_c(&rom);
+                cap.0 = false;
+            }
+            if cap.1 && !cap.2 {
+                res.romaji = util::capitalize_first_c(&res.romaji);
+                cap.2 = true;
             }
 
             util::ensure_trailing_space(
                 &mut res.romaji,
-                prev_type != CharType::LeadingPunct && prev_type != CharType::JoiningPunct,
+                *prev_type != CharType::LeadingPunct && *prev_type != CharType::JoiningPunct,
             );
             res.romaji.push_str(&rom);
 
             kana_buf.clear();
+            *prev_type = CharType::Hiragana;
         }
     };
 
     while let Some((i, c)) = char_indices.next() {
         if util::is_char_in_range(c, util::HIRAGANA) {
             if prev_buf_type != CharType::Hiragana {
-                conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
+                conv_kana_buf(&mut kana_buf, &mut res, &mut prev_acc_type, &mut cap);
             }
             kana_buf.push(c);
             prev_buf_type = CharType::Hiragana;
         } else if util::is_char_in_range(c, util::KATAKANA) {
             if prev_buf_type != CharType::Katakana {
-                conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
+                conv_kana_buf(&mut kana_buf, &mut res, &mut prev_acc_type, &mut cap);
             }
             kana_buf.push(c);
             prev_buf_type = CharType::Katakana;
         } else if util::is_char_in_range(c, util::KANJI) {
             let (t, n) = convert_kanji(&text[i..], &kana_buf, &dict);
-            conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
+            conv_kana_buf(&mut kana_buf, &mut res, &mut prev_acc_type, &mut cap);
 
             if n > 0 {
                 kana_buf = t;
-                conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
+                conv_kana_buf(&mut kana_buf, &mut res, &mut prev_acc_type, &mut cap);
                 for _ in 1..n {
                     char_indices.next();
                 }
@@ -85,18 +86,18 @@ pub fn convert(text: &str) -> KakasiResult {
             }
             prev_acc_type = CharType::Kanji;
         } else if c.is_whitespace() {
-            conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
+            conv_kana_buf(&mut kana_buf, &mut res, &mut prev_acc_type, &mut cap);
             res.hiragana.push(c);
             res.romaji.push(c);
             prev_acc_type = CharType::Whitespace;
         } else if c == '・' {
-            conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
+            conv_kana_buf(&mut kana_buf, &mut res, &mut prev_acc_type, &mut cap);
             res.hiragana.push(c);
             res.romaji.push(' ');
             prev_acc_type = CharType::Whitespace;
         } else if c == util::PROLONGED_SOUND_MARK {
             if prev_buf_type != CharType::Hiragana && prev_buf_type != CharType::Katakana {
-                conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
+                conv_kana_buf(&mut kana_buf, &mut res, &mut prev_acc_type, &mut cap);
             }
             kana_buf.push(c);
             prev_buf_type = match prev_buf_type {
@@ -104,7 +105,7 @@ pub fn convert(text: &str) -> KakasiResult {
                 _ => CharType::Katakana,
             };
         } else {
-            conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
+            conv_kana_buf(&mut kana_buf, &mut res, &mut prev_acc_type, &mut cap);
 
             res.hiragana.push(c);
             let (c_rom, char_type) = util::PCT_DICT.get(&c).copied().unwrap_or_else(|| {
@@ -145,15 +146,15 @@ pub fn convert(text: &str) -> KakasiResult {
                 res.romaji.push(c_rom);
             }
 
-            if c_rom == '.' && char_type != CharType::Numeric {
-                cap.0 = true;
-            }
+            cap.0 = c_rom == '.' && char_type != CharType::Numeric
+                || cap.0 && matches!(char_type, CharType::LeadingPunct | CharType::JoiningPunct);
+            cap.1 |= cap.0;
 
             prev_acc_type = char_type;
         };
     }
 
-    conv_kana_buf(&mut kana_buf, &mut res, prev_acc_type, &mut cap);
+    conv_kana_buf(&mut kana_buf, &mut res, &mut prev_acc_type, &mut cap);
     res
 }
 
@@ -308,30 +309,43 @@ fn convert_kanji(text: &str, btext: &str, dict: &PhfMap) -> (String, usize) {
 }
 
 /// NFKC-normalize the text, convert all synonymous kanji
-/// and replace iteration characters (`々`)
+/// and replace iteration marks (`々`)
 fn normalize(text: &str) -> String {
+    let mut imcount = 0;
     let replacements = text.char_indices().filter_map(|(i, c)| {
-        syn_dict::SYN_DICT
-            .get(&c)
-            .map(|r_char| (i, c.len_utf8(), *r_char))
-            .or_else(|| {
-                if c == util::ITERATION_MARK {
-                    text[0..i]
-                        .chars()
-                        .last()
-                        .map(|prev| (i, c.len_utf8(), prev))
-                } else {
-                    None
+        if c == util::ITERATION_MARK {
+            // Count iteration marks
+            if imcount == 0 {
+                imcount = 1;
+                for c in text[i + c.len_utf8()..].chars() {
+                    if c == util::ITERATION_MARK {
+                        imcount += 1;
+                    } else {
+                        break;
+                    }
                 }
-            })
-            .or_else(|| {
-                // Dont normalize japanese punctuation, we need it to add correct spacing
-                if util::is_char_japanese_punctuation(c) {
-                    Some((i, c.len_utf8(), c))
-                } else {
-                    None
-                }
-            })
+            }
+
+            // Replace withe the character imcount positions before
+            let mut chars_rev = text[0..i].chars().rev();
+            for _ in 1..imcount {
+                chars_rev.next();
+            }
+            chars_rev.next().map(|prev| (i, c.len_utf8(), prev))
+        } else {
+            imcount = 0;
+            syn_dict::SYN_DICT
+                .get(&c)
+                .map(|r_char| (i, c.len_utf8(), *r_char))
+                .or_else(|| {
+                    // Dont normalize japanese punctuation, we need it to add correct spacing
+                    if util::is_char_fwidth_punctuation(c) {
+                        Some((i, c.len_utf8(), c))
+                    } else {
+                        None
+                    }
+                })
+        }
     });
 
     let mut new = String::with_capacity(text.len());
@@ -487,6 +501,17 @@ mod tests {
         "saisho no antei han dearu 1.0 han ga riri"
     )]
     #[case("にゃ＄にゃ", "にゃ＄にゃ", "nya $ nya")]
+    #[case(
+        "安定版となるRust 1.0がリリースされた[84]。1.0版の後、安定版およびベータ版が6週間おきに定期リリースされている[85]。",
+        "あんていはんとなるRust 1.0がりりーすされた[84]。1.0はんののち、あんていはんおよびべーたはんが6しゅうかんおきにていきりりーすされている[85]。",
+        "Antei han tonaru Rust 1.0 ga ririisu sareta [84]. 1.0 han no nochi, antei han oyobi beeta han ga 6 shuukan okini teiki ririisu sareteiru [85]."
+    )]
+    #[case(
+        "prelude文にTryIntoやTryFrom",
+        "preludeぶんにTryIntoやTryFrom",
+        "prelude bun ni TryInto ya TryFrom"
+    )]
+    #[case("要所々々", "ようしょようしょ", "yousho yousho")]
     fn romanize(#[case] text: &str, #[case] hiragana: &str, #[case] romaji: &str) {
         let res = convert(text);
         assert_eq!(res.hiragana, hiragana);

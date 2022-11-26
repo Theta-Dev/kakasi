@@ -90,6 +90,13 @@ const JA_PUNCTUATION_RANGES: [(u32, u32); 7] = [
     ZENKAKU_PUNCTUATION_4,
 ];
 
+const FW_PUNCTUATION_RANGES: [(u32, u32); 4] = [
+    ZENKAKU_PUNCTUATION_1,
+    ZENKAKU_PUNCTUATION_2,
+    ZENKAKU_PUNCTUATION_3,
+    ZENKAKU_PUNCTUATION_4,
+];
+
 pub fn is_char_in_range(c: char, range: (u32, u32)) -> bool {
     range.0 <= c as u32 && c as u32 <= range.1
 }
@@ -100,7 +107,13 @@ pub fn is_char_japanese_punctuation(c: char) -> bool {
         .any(|r| is_char_in_range(c, *r))
 }
 
-pub fn capitalize_first_c(text: &str) -> (String, bool) {
+pub fn is_char_fwidth_punctuation(c: char) -> bool {
+    FW_PUNCTUATION_RANGES
+        .iter()
+        .any(|r| is_char_in_range(c, *r))
+}
+
+pub fn capitalize_first_c(text: &str) -> String {
     let mut done = false;
     let res = text
         .chars()
@@ -113,7 +126,7 @@ pub fn capitalize_first_c(text: &str) -> (String, bool) {
             }
         })
         .collect::<String>();
-    (res, done)
+    res
 }
 
 pub fn ensure_trailing_space(text: &mut String, ts: bool) {
