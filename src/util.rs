@@ -51,19 +51,18 @@ pub static PCT_DICT: phf::Map<char, (char, CharType)> = phf::phf_map!(
     '〙' => (')', CharType::TrailingPunct),
     '〝' => ('"', CharType::LeadingPunct),
     '〟' => ('"', CharType::TrailingPunct),
-
-    '.' => ('.', CharType::TrailingPunct),
-    ',' => (',', CharType::TrailingPunct),
-    ':' => (':', CharType::TrailingPunct),
-    ';' => (';', CharType::TrailingPunct),
-    '!' => ('!', CharType::TrailingPunct),
-    '?' => ('?', CharType::TrailingPunct),
-    ')' => (')', CharType::TrailingPunct),
-    ']' => (']', CharType::TrailingPunct),
-    '}' => ('}', CharType::TrailingPunct),
-    '(' => ('(', CharType::LeadingPunct),
-    '[' => ('[', CharType::LeadingPunct),
-    '{' => ('{', CharType::LeadingPunct),
+    '：' => (':', CharType::TrailingPunct),
+    '；' => (';', CharType::TrailingPunct),
+    '！' => ('!', CharType::TrailingPunct),
+    '？' => ('?', CharType::TrailingPunct),
+    '＃' => ('?', CharType::LeadingPunct),
+    '）' => (')', CharType::TrailingPunct),
+    '］' => (']', CharType::TrailingPunct),
+    '｝' => ('}', CharType::TrailingPunct),
+    '（' => ('(', CharType::LeadingPunct),
+    '［' => ('[', CharType::LeadingPunct),
+    '｛' => ('{', CharType::LeadingPunct),
+    '＿' => ('{', CharType::JoiningPunct),
 );
 
 pub const HIRAGANA: (u32, u32) = (0x3041, 0x3096);
@@ -76,11 +75,19 @@ pub const PROLONGED_SOUND_MARK: char = 'ー';
 const CJK_SYMBOLS_PUNCTUATION: (u32, u32) = (0x3000, 0x303F);
 const KANA_PUNCTUATION: (u32, u32) = (0xFF61, 0xFF65);
 const KATAKANA_PUNCTUATION: (u32, u32) = (0x30FB, 0x30FC);
+pub const ZENKAKU_PUNCTUATION_1: (u32, u32) = (0xFF01, 0xFF0F);
+pub const ZENKAKU_PUNCTUATION_2: (u32, u32) = (0xFF1A, 0xFF1F);
+pub const ZENKAKU_PUNCTUATION_3: (u32, u32) = (0xFF3B, 0xFF3F);
+pub const ZENKAKU_PUNCTUATION_4: (u32, u32) = (0xFF5B, 0xFF60);
 
-const JA_PUNCTUATION_RANGES: [(u32, u32); 3] = [
+const JA_PUNCTUATION_RANGES: [(u32, u32); 7] = [
     CJK_SYMBOLS_PUNCTUATION,
     KANA_PUNCTUATION,
     KATAKANA_PUNCTUATION,
+    ZENKAKU_PUNCTUATION_1,
+    ZENKAKU_PUNCTUATION_2,
+    ZENKAKU_PUNCTUATION_3,
+    ZENKAKU_PUNCTUATION_4,
 ];
 
 pub fn is_char_in_range(c: char, range: (u32, u32)) -> bool {

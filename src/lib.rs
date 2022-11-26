@@ -6,8 +6,6 @@ mod util;
 
 pub use types::KakasiResult;
 
-use std::borrow::Cow;
-
 use unicode_normalization::UnicodeNormalization;
 
 use phfbin::PhfMap;
@@ -16,9 +14,7 @@ use types::{CharType, KanjiString, Readings};
 pub fn convert(text: &str) -> KakasiResult {
     let dict = PhfMap::new(util::KANJI_DICT);
 
-    // TODO: char conversion should be done with iterators
-    let text = text.nfkc().collect::<String>();
-    let text = convert_syn(&text);
+    let text = normalize(&text);
 
     let mut char_indices = text.char_indices().peekable();
     let mut kana_buf = String::new();
@@ -129,8 +125,8 @@ pub fn convert(text: &str) -> KakasiResult {
                 )
             });
 
-            if (prev_acc_type != CharType::Other && prev_acc_type != CharType::Numeric)
-                || util::is_char_japanese_punctuation(c)
+            let is_jpunct = util::is_char_japanese_punctuation(c);
+            if (prev_acc_type != CharType::Other && prev_acc_type != CharType::Numeric) || is_jpunct
             {
                 util::ensure_trailing_space(
                     &mut res.romaji,
@@ -140,7 +136,14 @@ pub fn convert(text: &str) -> KakasiResult {
                         && char_type != CharType::JoiningPunct,
                 );
             }
-            res.romaji.push(c_rom);
+
+            // Japanese punctuation was not normalized at the beginning,
+            // the normalization here will replace fullwidth characters with normal ones.
+            if is_jpunct && char_type == CharType::Other {
+                res.romaji.extend(c_rom.nfkc());
+            } else {
+                res.romaji.push(c_rom);
+            }
 
             if c_rom == '.' && char_type != CharType::Numeric {
                 cap.0 = true;
@@ -304,43 +307,43 @@ fn convert_kanji(text: &str, btext: &str, dict: &PhfMap) -> (String, usize) {
     translation.map(|tl| (tl, n_c)).unwrap_or_default()
 }
 
-/// Convert all synonymous kanji and replace iteration characters (`々`)
-///
-/// The input text needs to be NFKC-normalized.
-fn convert_syn(text: &str) -> Cow<str> {
-    let mut replacements = text
-        .char_indices()
-        .filter_map(|(i, c)| {
-            syn_dict::SYN_DICT
-                .get(&c)
-                .map(|r_char| (i, c.len_utf8(), *r_char))
-                .or_else(|| {
-                    if c == util::ITERATION_MARK {
-                        text[0..i]
-                            .chars()
-                            .last()
-                            .map(|prev| (i, c.len_utf8(), prev))
-                    } else {
-                        None
-                    }
-                })
-        })
-        .peekable();
-
-    if replacements.peek().is_none() {
-        return Cow::Borrowed(text);
-    }
+/// NFKC-normalize the text, convert all synonymous kanji
+/// and replace iteration characters (`々`)
+fn normalize(text: &str) -> String {
+    let replacements = text.char_indices().filter_map(|(i, c)| {
+        syn_dict::SYN_DICT
+            .get(&c)
+            .map(|r_char| (i, c.len_utf8(), *r_char))
+            .or_else(|| {
+                if c == util::ITERATION_MARK {
+                    text[0..i]
+                        .chars()
+                        .last()
+                        .map(|prev| (i, c.len_utf8(), prev))
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                // Dont normalize japanese punctuation, we need it to add correct spacing
+                if util::is_char_japanese_punctuation(c) {
+                    Some((i, c.len_utf8(), c))
+                } else {
+                    None
+                }
+            })
+    });
 
     let mut new = String::with_capacity(text.len());
     let mut last = 0;
 
     for (i, clen, r_char) in replacements {
-        new.push_str(&text[last..i]);
+        new.extend(text[last..i].nfkc());
         new.push(r_char);
         last = i + clen;
     }
-    new.push_str(&text[last..]);
-    Cow::Owned(new)
+    new.extend(text[last..].nfkc());
+    new
 }
 
 #[cfg(test)]
@@ -354,7 +357,7 @@ mod tests {
     #[case("…", "...")]
     #[case("‥", "..")]
     #[case("\u{FF70}", "\u{30FC}")]
-    fn t_normalize(#[case] text: &str, #[case] expect: &str) {
+    fn t_unicode_nfkc(#[case] text: &str, #[case] expect: &str) {
         let res = text.nfkc().collect::<String>();
         assert_eq!(res, expect);
     }
@@ -363,8 +366,8 @@ mod tests {
     #[case("壱意", "一意")]
     #[case("", "")]
     #[case("Abc", "Abc")]
-    fn t_convert_syn(#[case] text: &str, #[case] expect: &str) {
-        let res = convert_syn(text);
+    fn t_normalize(#[case] text: &str, #[case] expect: &str) {
+        let res = normalize(text);
         assert_eq!(res, expect);
     }
 
@@ -455,7 +458,7 @@ mod tests {
     #[case("アヷーリヤ品", "あゔぁーりやひん", "avaariya hin")]
     #[case(
         "安藤 和風（あんどう はるかぜ、慶応2年1月12日（1866年2月26日） - 昭和11年（1936年）12月26日）は、日本のジャーナリスト、マスメディア経営者、俳人、郷土史研究家。通名および俳号は「和風」をそのまま音読みして「わふう」。秋田県の地方紙「秋田魁新報」の事業拡大に貢献し、秋田魁新報社三大柱石の一人と称された。「魁の安藤か、安藤の魁か」と言われるほど、新聞記者としての名声を全国にとどろかせた[4]。",
-        "あんどう わふう(あんどう はるかぜ、けいおう2ねん1がつ12にち(1866ねん2がつ26にち) - しょうわ11ねん(1936ねん)12がつ26にち)は、にっぽんのじゃーなりすと、ますめでぃあけいえいしゃ、はいじん、きょうどしけんきゅうか。とおりめいおよびはいごうは「わふう」をそのままおんよみして「わふう」。あきたけんのちほうし「あきたかいしんぽう」のじぎょうかくだいにこうけんし、あきたかいしんぽうしゃさんだいちゅうせきのひとりとしょうされた。「かいのあんどうか、あんどうのかいか」といわれるほど、しんぶんきしゃとしてのめいせいをぜんこくにとどろかせた[4]。",
+        "あんどう わふう（あんどう はるかぜ、けいおう2ねん1がつ12にち（1866ねん2がつ26にち） - しょうわ11ねん（1936ねん）12がつ26にち）は、にっぽんのじゃーなりすと、ますめでぃあけいえいしゃ、はいじん、きょうどしけんきゅうか。とおりめいおよびはいごうは「わふう」をそのままおんよみして「わふう」。あきたけんのちほうし「あきたかいしんぽう」のじぎょうかくだいにこうけんし、あきたかいしんぽうしゃさんだいちゅうせきのひとりとしょうされた。「かいのあんどうか、あんどうのかいか」といわれるほど、しんぶんきしゃとしてのめいせいをぜんこくにとどろかせた[4]。",
         "Andou wafuu (andou harukaze, keiou 2 nen 1 gatsu 12 nichi (1866 nen 2 gatsu 26 nichi) - shouwa 11 nen (1936 nen) 12 gatsu 26 nichi) ha, nippon no jaanarisuto, masumedia keieisha, haijin, kyoudoshi kenkyuuka. Toori mei oyobi hai gou ha \"wafuu\" wosonomama onyomi shite \"wafuu\". Akitaken no chihoushi \"akita kai shinpou\" no jigyou kakudai ni kouken shi, akita kai shinpou sha sandai chuuseki no hitori to shousa reta. \"Kai no andou ka, andou no kai ka\" to iwa reruhodo, shinbunkisha toshiteno meisei wo zenkoku nitodorokaseta [4].",
     )]
     #[case(
@@ -465,12 +468,12 @@ mod tests {
     )]
     #[case(
         "緑黄色社会『ミチヲユケ』Official Video -「ファーストペンギン！」主題歌",
-        "みどりきいろしゃかい『みちをゆけ』Official Video -「ふぁーすとぺんぎん!」しゅだいか",
+        "みどりきいろしゃかい『みちをゆけ』Official Video -「ふぁーすとぺんぎん！」しゅだいか",
         "midori kiiro shakai \"michiwoyuke\" Official Video - \"faasutopengin!\" shudaika"
     )]
     #[case(
         "MONKEY MAJIK - Running In The Dark【Lyric Video】（日本語字幕付）",
-        "MONKEY MAJIK - Running In The Dark【Lyric Video】(にほんごじまくつき)",
+        "MONKEY MAJIK - Running In The Dark【Lyric Video】（にほんごじまくつき）",
         "MONKEY MAJIK - Running In The Dark [Lyric Video] (nihongo jimaku tsuki)"
     )]
     #[case(
@@ -478,6 +481,12 @@ mod tests {
         "とりしまりやくだいにせいさくぎじゅつぶぶちょう",
         "torishimariyaku daini seisaku gijutsubu buchou"
     )]
+    #[case(
+        "最初の安定版である1.0版がリリ",
+        "さいしょのあんていはんである1.0はんがりり",
+        "saisho no antei han dearu 1.0 han ga riri"
+    )]
+    #[case("にゃ＄にゃ", "にゃ＄にゃ", "nya $ nya")]
     fn romanize(#[case] text: &str, #[case] hiragana: &str, #[case] romaji: &str) {
         let res = convert(text);
         assert_eq!(res.hiragana, hiragana);
