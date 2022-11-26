@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use phf::PhfHash;
 
-use crate::phfbin::Decodable;
+use crate::{phfbin::Decodable, util};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct KanjiString<'a>(pub Cow<'a, str>);
@@ -20,6 +20,19 @@ pub enum Reading {
     Simple { hira: String },
     Tail { hira: String, ch: u8 },
     Context { hira: String, ctx: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CharType {
+    Kanji,
+    Katakana,
+    Hiragana,
+    Whitespace,
+    Other,
+    LeadingPunct,
+    TrailingPunct,
+    JoiningPunct,
+    Numeric,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -105,9 +118,7 @@ impl Iterator for ReadingsIter {
                 // Hiragana
                 let h = match c {
                     0x7f => ' ',
-                    _ => (wana_kana::constants::HIRAGANA_START as u32 + *c as u32)
-                        .try_into()
-                        .unwrap(),
+                    _ => (util::HIRAGANA.0 + *c as u32).try_into().unwrap(),
                 };
                 if read_ctx {
                     ctx.push(h);
@@ -142,7 +153,7 @@ mod tests {
 
     #[test]
     fn readings_iter() {
-        let dict = PhfMap::new(crate::KANJI_DICT);
+        let dict = PhfMap::new(crate::util::KANJI_DICT);
         let readings = dict
             .get::<KanjiString, Readings>(KanjiString::new("会"))
             .unwrap();

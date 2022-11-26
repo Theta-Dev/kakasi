@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn lookup() {
-        let phfmap = PhfMap::new(crate::KANJI_DICT);
+        let phfmap = PhfMap::new(crate::util::KANJI_DICT);
 
         dbg!(phfmap.get::<KanjiString, Readings>(KanjiString::new("描")));
     }

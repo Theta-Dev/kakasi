@@ -3,3 +3,4 @@
 
 /codegen/kanji_dict.bin
 /codegen/syn_dict.rs
+/codegen/hepburn_dict.rs

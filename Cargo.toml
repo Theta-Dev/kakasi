@@ -16,7 +16,6 @@ byteorder = "1.4.3"
 phf = {version = "0.11.1", features = ["macros"]}
 phf_shared = "0.11.1"
 unicode-normalization = "0.1.22"
-wana_kana = "2.1.0"
 
 [dev-dependencies]
 rstest = { version = "0.15.0", default-features = false }
