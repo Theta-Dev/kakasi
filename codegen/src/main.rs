@@ -23,7 +23,8 @@ fn parse_dict_ln(records: &mut Records, line: &str, ln: usize) {
         return;
     }
 
-    let mut token = line.split_ascii_whitespace();
+    let normalized = line.nfkc().collect::<String>();
+    let mut token = normalized.split_ascii_whitespace();
     let reading = token.next();
     let kanji = token.next();
     let context = token.next();
@@ -41,6 +42,25 @@ fn parse_dict_ln(records: &mut Records, line: &str, ln: usize) {
 
     match (reading, kanji) {
         (Some(mut reading), Some(kanji)) => {
+            // Replace iteration characters (`々`)
+            let kanji = kanji
+                .char_indices()
+                .map(|(i, c)| {
+                    if c == '々' {
+                        if let Some(prev_c) = kanji[0..i].chars().last() {
+                            prev_c
+                        } else {
+                            panic!(
+                                "kanhi({}): could not replace iteration char, `{}`",
+                                ln, line
+                            )
+                        }
+                    } else {
+                        c
+                    }
+                })
+                .collect::<String>();
+
             // Parse tail
             let (i_last, last) = reading.char_indices().last().unwrap();
             let tail = if last.is_ascii_alphabetic() {
@@ -62,23 +82,13 @@ fn parse_dict_ln(records: &mut Records, line: &str, ln: usize) {
             }
 
             let record = records.entry(kanji.to_owned()).or_default();
-            match record.entry(
-                tail.map(|t| t.to_string())
-                    .or_else(|| context.map(str::to_owned))
-                    .unwrap_or_default(),
-            ) {
-                std::collections::hash_map::Entry::Occupied(_) => {
-                    /*
-                    // Replace reading if the new one is shorter
-                    let val = e.get_mut();
-                    if val.len() > reading.len() {
-                        *val = reading.to_owned();
-                    }*/
-                }
-                std::collections::hash_map::Entry::Vacant(e) => {
-                    e.insert(reading.to_owned());
-                }
-            }
+            record
+                .entry(
+                    tail.map(|t| t.to_string())
+                        .or_else(|| context.map(str::to_owned))
+                        .unwrap_or_default(),
+                )
+                .or_insert_with(|| reading.to_owned());
         }
         _ => panic!("kanji({}): could not parse line, `{}`", ln, line),
     }
