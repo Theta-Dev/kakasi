@@ -149,7 +149,10 @@ pub fn convert(text: &str) -> KakasiResult {
             });
 
             let is_jpunct = util::is_char_japanese_punctuation(c);
-            if (prev_acc_type != CharType::Other && prev_acc_type != CharType::Numeric) || is_jpunct
+            if (prev_acc_type != CharType::Other
+                && prev_acc_type != CharType::Numeric
+                && prev_acc_type != CharType::Whitespace)
+                || is_jpunct
             {
                 util::ensure_trailing_space(
                     &mut res.romaji,
