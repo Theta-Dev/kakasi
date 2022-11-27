@@ -1,16 +1,32 @@
+//! # Kakasi
+//!
+//! `kakasi` is a Rust library to transliterate *hiragana*, *katakana* and *kanji* (Japanese text) into *rōmaji* (Latin/Roman alphabet).
+//!
+//! It was ported from the [pykakasi](https://codeberg.org/miurahr/pykakasi) library which itself is a port of the original
+//! [kakasi](http://kakasi.namazu.org/) library written in C.
+
+#![warn(missing_docs, clippy::todo)]
+
 mod hepburn_dict;
 mod phfbin;
 mod syn_dict;
 mod types;
 mod util;
 
-pub use types::KakasiResult;
+pub use types::{IsJapanese, KakasiResult};
 
 use unicode_normalization::UnicodeNormalization;
 
 use phfbin::PhfMap;
 use types::{CharType, KanjiString, Readings};
 
+/// Convert the given Japanese text to hiragana/romaji
+///
+/// ```
+/// let res = kakasi::convert("Hello 日本!");
+/// assert_eq!(res.hiragana, "Hello にほん!");
+/// assert_eq!(res.romaji, "Hello nihon !");
+/// ```
 pub fn convert(text: &str) -> KakasiResult {
     let dict = PhfMap::new(util::KANJI_DICT);
 
@@ -26,7 +42,7 @@ pub fn convert(text: &str) -> KakasiResult {
     // 0: capitalize next word, 1: capitalize first sentence, 2: first sentence capitalized
     let mut cap = (false, false, false);
 
-    let mut res = KakasiResult::default();
+    let mut res = KakasiResult::new(text.len());
 
     let conv_kana_buf = |kana_buf: &mut String,
                          res: &mut KakasiResult,
@@ -168,6 +184,36 @@ pub fn convert(text: &str) -> KakasiResult {
     res
 }
 
+/// Check if the input text is Japanese
+///
+/// Note that (especially very short) japanese texts are not always
+/// distinguishable from Chinese, because these languages use the same
+/// characters.
+///
+/// Thus if only CJK ideographs are found, the function returns
+/// [`IsJapanese::Maybe`].
+///
+/// ```
+/// # use kakasi::IsJapanese;
+/// assert_eq!(kakasi::is_japanese("Abc"), IsJapanese::False);
+/// assert_eq!(kakasi::is_japanese("日本"), IsJapanese::Maybe);
+/// assert_eq!(kakasi::is_japanese("ラスト"), IsJapanese::True);
+/// ```
+pub fn is_japanese(text: &str) -> IsJapanese {
+    let mut maybe = false;
+    for c in text.chars() {
+        if util::is_char_in_range(c, util::HIRAGANA) || util::is_char_in_range(c, util::KATAKANA) {
+            return IsJapanese::True;
+        }
+        maybe |= util::is_char_in_range(c, util::KANJI);
+    }
+    match maybe {
+        true => IsJapanese::Maybe,
+        false => IsJapanese::False,
+    }
+}
+
+/// Convert the katakana from the input string to hiragana
 fn convert_katakana(text: &str) -> String {
     let mut buf = String::with_capacity(text.len());
     text.chars().for_each(|c| {
@@ -183,6 +229,7 @@ fn convert_katakana(text: &str) -> String {
     buf
 }
 
+/// Convert the hiragana from the input string to latin characters
 fn hiragana_to_romaji(text: &str) -> String {
     let mut buf = String::with_capacity(text.len());
     let mut chars = text.char_indices().peekable();

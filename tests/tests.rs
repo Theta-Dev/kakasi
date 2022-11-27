@@ -1,5 +1,9 @@
 use rstest::rstest;
 
+const RUST_ARTICLE: &str = include_str!("../tests/rust_article.txt");
+const RUST_ARTICLE_HIRAGANA: &str = include_str!("../tests/rust_article_hiragana.txt");
+const RUST_ARTICLE_ROMAJI: &str = include_str!("../tests/rust_article_romaji.txt");
+
 #[rstest]
 #[case("", "", "")]
 #[case("構成", "こうせい", "kousei")]
@@ -46,8 +50,8 @@ use rstest::rstest;
 #[case("アヷーリヤ品", "あゔぁーりやひん", "avaariya hin")]
 #[case(
         "安藤 和風（あんどう はるかぜ、慶応2年1月12日（1866年2月26日） - 昭和11年（1936年）12月26日）は、日本のジャーナリスト、マスメディア経営者、俳人、郷土史研究家。通名および俳号は「和風」をそのまま音読みして「わふう」。秋田県の地方紙「秋田魁新報」の事業拡大に貢献し、秋田魁新報社三大柱石の一人と称された。「魁の安藤か、安藤の魁か」と言われるほど、新聞記者としての名声を全国にとどろかせた[4]。",
-        "あんどう わふう（あんどう はるかぜ、けいおう2ねん1がつ12にち（1866ねん2がつ26にち） - しょうわ11ねん（1936ねん）12がつ26にち）は、にっぽんのじゃーなりすと、ますめでぃあけいえいしゃ、はいじん、きょうどしけんきゅうか。とおりめいおよびはいごうは「わふう」をそのままおんよみして「わふう」。あきたけんのちほうし「あきたかいしんぽう」のじぎょうかくだいにこうけんし、あきたかいしんぽうしゃさんだいちゅうせきのひとりとしょうされた。「かいのあんどうか、あんどうのかいか」といわれるほど、しんぶんきしゃとしてのめいせいをぜんこくにとどろかせた[4]。",
-        "Andou wafuu (andou harukaze, keiou 2 nen 1 gatsu 12 nichi (1866 nen 2 gatsu 26 nichi) - shouwa 11 nen (1936 nen) 12 gatsu 26 nichi) ha, nippon no jaanarisuto, masumedia keieisha, haijin, kyoudoshi kenkyuuka. Toori mei oyobi hai gou ha \"wafuu\" wosonomama onyomi shite \"wafuu\". Akitaken no chihoushi \"akita kai shinpou\" no jigyou kakudai ni kouken shi, akita kai shinpou sha sandai chuuseki no hitori to shousa reta. \"Kai no andou ka, andou no kai ka\" to iwa reruhodo, shinbunkisha toshiteno meisei wo zenkoku nitodorokaseta [4].",
+        "あんどう わふう（あんどう はるかぜ、けいおう2ねん1がつ12にち（1866ねん2がつ26にち） - しょうわ11ねん（1936ねん）12がつ26にち）は、にほんのじゃーなりすと、ますめでぃあけいえいしゃ、はいじん、きょうどしけんきゅうか。とおりめいおよびはいごうは「わふう」をそのままおんよみして「わふう」。あきたけんのちほうし「あきたかいしんぽう」のじぎょうかくだいにこうけんし、あきたかいしんぽうしゃさんだいちゅうせきのひとりとしょうされた。「かいのあんどうか、あんどうのかいか」といわれるほど、しんぶんきしゃとしてのめいせいをぜんこくにとどろかせた[4]。",
+        "Andou wafuu (andou harukaze, keiou 2 nen 1 gatsu 12 nichi (1866 nen 2 gatsu 26 nichi) - shouwa 11 nen (1936 nen) 12 gatsu 26 nichi) ha, nihon no jaanarisuto, masumedia keieisha, haijin, kyoudoshi kenkyuuka. Toori mei oyobi hai gou ha \"wafuu\" wosonomama onyomi shite \"wafuu\". Akitaken no chihoushi \"akita kai shinpou\" no jigyou kakudai ni kouken shi, akita kai shinpou sha sandai chuuseki no hitori to shousa reta. \"Kai no andou ka, andou no kai ka\" to iwa reruhodo, shinbunkisha toshiteno meisei wo zenkoku nitodorokaseta [4].",
     )]
 #[case(
     "『ザ・トラベルナース』",
@@ -87,6 +91,7 @@ use rstest::rstest;
 )]
 #[case("要所々々", "ようしょようしょ", "yousho yousho")]
 #[case("Hello World. abcd.", "Hello World. abcd.", "Hello World. abcd.")]
+#[case::rust_article(RUST_ARTICLE, RUST_ARTICLE_HIRAGANA, RUST_ARTICLE_ROMAJI)]
 fn romanize(#[case] text: &str, #[case] hiragana: &str, #[case] romaji: &str) {
     let res = kakasi::convert(text);
     assert_eq!(res.hiragana, hiragana);

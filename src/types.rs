@@ -57,11 +57,44 @@ pub enum CharType {
     Other,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Romanization result
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct KakasiResult {
+    /// Japanese text with kanji/katakana converted to hiragana
     pub hiragana: String,
+    /// Romanized Japanese text
     pub romaji: String,
+}
+
+/// IsJapanese result
+///
+/// **Info:** can be converted to boolean, which is equivalent to
+/// `x != IsJapanese::False`
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum IsJapanese {
+    /// No Japanese characters found
+    False,
+    /// Only CJK ideographs found. These may be Japansese kanji
+    /// but they could also belong to a Chinese text.
+    Maybe,
+    /// Japanese kana found
+    True,
+}
+
+impl KakasiResult {
+    pub(crate) fn new(cap: usize) -> Self {
+        Self {
+            hiragana: String::with_capacity(cap),
+            romaji: String::with_capacity(cap),
+        }
+    }
+}
+
+impl From<IsJapanese> for bool {
+    fn from(x: IsJapanese) -> Self {
+        x != IsJapanese::False
+    }
 }
 
 impl<'a> KanjiString<'a> {

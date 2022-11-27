@@ -1,5 +1,3 @@
-mod perf;
-
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 const RUST_ARTICLE: &str = include_str!("../tests/rust_article.txt");
@@ -18,9 +16,5 @@ fn convert(text: &str) {
     kakasi::convert(black_box(text));
 }
 
-criterion_group!{
-    name = benches;
-    config = Criterion::default().with_profiler(perf::FlamegraphProfiler::new(100));
-    targets = benchmark
-}
+criterion_group!{benches, benchmark}
 criterion_main!(benches);
