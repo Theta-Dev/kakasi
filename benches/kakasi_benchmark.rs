@@ -7,14 +7,12 @@ fn benchmark(c: &mut Criterion) {
         convert("安定版となるRust 1.0がリリースされた[84]。1.0版の後、安定版およびベータ版が6週間おきに定期リリースされている[85]。")
     }));
 
-    c.bench_function("rust_article", |b| b.iter(|| {
-        convert(RUST_ARTICLE)
-    }));
+    c.bench_function("rust_article", |b| b.iter(|| convert(RUST_ARTICLE)));
 }
 
 fn convert(text: &str) {
     kakasi::convert(black_box(text));
 }
 
-criterion_group!{benches, benchmark}
+criterion_group! {benches, benchmark}
 criterion_main!(benches);

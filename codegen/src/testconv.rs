@@ -192,9 +192,7 @@ fn convert_kanji(text: &str, btext: &str, dict: &Records) -> (String, usize) {
         }
     }
 
-    translation
-        .map(|tl| (tl, n_c))
-        .unwrap_or_default()
+    translation.map(|tl| (tl, n_c)).unwrap_or_default()
 }
 
 #[cfg(test)]
