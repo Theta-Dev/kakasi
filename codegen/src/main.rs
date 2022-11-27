@@ -131,8 +131,15 @@ struct Readings(HashMap<String, String>);
 impl Encodable for KanjiString {
     fn encode(&self) -> Vec<u8> {
         self.0
-            .encode_utf16()
-            .flat_map(|c16| [((c16 & 0xff00) >> 8) as u8, (c16 & 0xff) as u8])
+            .chars()
+            .map(|c| {
+                let c = c as u32;
+                if c > 0xffff {
+                    panic!("character `{}` > 0xffff", { c });
+                }
+                [((c & 0xff00) >> 8) as u8, (c & 0xff) as u8]
+            })
+            .flatten()
             .collect()
     }
 }

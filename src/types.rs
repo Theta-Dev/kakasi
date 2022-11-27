@@ -15,24 +15,46 @@ pub struct ReadingsIter {
     i: usize,
 }
 
+/// Reading from the kanji dictionary
 #[derive(Debug)]
 pub enum Reading {
-    Simple { hira: String },
-    Tail { hira: String, ch: u8 },
-    Context { hira: String, ctx: String },
+    /// Default reading
+    Simple {
+        hira: String,
+    },
+    ///
+    Tail {
+        hira: String,
+        ch: u8,
+    },
+    // Reading that has to be preceded by a given context
+    Context {
+        hira: String,
+        ctx: String,
+    },
 }
 
+/// Character type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CharType {
-    Kanji,
-    Katakana,
+    /// Hiragana (Japanese syllabic characters)
     Hiragana,
+    /// Katakana (Japanese syllabic characters)
+    Katakana,
+    /// Kanji (Japanese ideographic characters)
+    Kanji,
+    /// Whitespace characters (spaces, newlines, etc.)
     Whitespace,
-    Other,
+    /// Japanese punctuation that is led by a space (e.g. `A #B`, `A (B`)
     LeadingPunct,
+    /// Japanese punctuation that is followed by a space (e.g. `A: B`, `A) B`)
     TrailingPunct,
+    /// Japanese punctuation the is not seperated by spaces (e.g `A~B`, `A_B`)
     JoiningPunct,
+    /// Numbers as well as dots and commas used as decimal seperators
     Numeric,
+    /// The rest: chars and punctuation for other scripts
+    Other,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -50,15 +72,10 @@ impl<'a> KanjiString<'a> {
 
 impl Decodable for KanjiString<'_> {
     fn decode(data: &'static [u8]) -> Self {
-        // TODO: make more efficient without 2 copies
         KanjiString(Cow::Owned(
-            String::from_utf16(
-                &data
-                    .chunks_exact(2)
-                    .map(|c| ((c[0] as u16) << 8) | c[1] as u16)
-                    .collect::<Vec<_>>(),
-            )
-            .unwrap(),
+            data.chunks_exact(2)
+                .map(|c| unsafe { char::from_u32_unchecked(((c[0] as u32) << 8) | c[1] as u32) })
+                .collect(),
         ))
     }
 }
