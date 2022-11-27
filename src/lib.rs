@@ -83,9 +83,8 @@ pub fn convert(text: &str) -> KakasiResult {
                 }
             } else {
                 // Unknown kanji
-                // TODO: FOR TESTING
-                res.hiragana.push_str("[?]");
-                res.romaji.push_str("[?]");
+                res.hiragana.push(c);
+                res.romaji.push(c);
             }
             prev_acc_type = CharType::Kanji;
         } else if c.is_whitespace() {
@@ -336,11 +335,11 @@ fn normalize(text: &str) -> String {
             }
 
             // Replace withe the character imcount positions before
-            let mut chars_rev = text[0..i].chars().rev();
-            for _ in 1..imcount {
-                chars_rev.next();
-            }
-            chars_rev.next().map(|prev| (i, c.len_utf8(), prev))
+            text[0..i]
+                .chars()
+                .rev()
+                .nth(imcount - 1)
+                .map(|prev| (i, c.len_utf8(), prev))
         } else {
             imcount = 0;
             syn_dict::SYN_DICT
