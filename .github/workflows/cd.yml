@@ -9,7 +9,6 @@ on:
 jobs:
   publish:
     name: Publish on crates.io
-    needs: generate-changelog
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
