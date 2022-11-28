@@ -25,6 +25,26 @@ assert_eq!(kakasi::is_japanese("日本"), IsJapanese::Maybe);
 assert_eq!(kakasi::is_japanese("ラスト"), IsJapanese::True);
 ```
 
+## CLI
+
+```sh
+$ cargo install kakasi
+
+## Convert to romaji
+$ kakasi Hello 日本!
+Hello nihon !
+
+## Convert to hiragana
+$ kakasi -k Hello 日本!
+Hello にほん!
+
+## Read from file
+$ kakasi -f rust_article.txt
+
+## Read from STDIN
+$ echo "Hello 日本" | kakasi
+```
+
 ## Performance
 
 Time to convert a 100KB test file using the CLI:

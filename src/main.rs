@@ -17,20 +17,23 @@ fn main() {
     // Parse commandline arguments
     let mut hira = false;
     let mut path = None;
+    let mut txt = String::new();
 
     let mut args = std::env::args();
+    let mut after_opts = false;
     let pname = args.next().unwrap_or_else(|| "kakasi".to_owned());
-    for a in args {
-        if a.starts_with('-') {
+    while let Some(a) = args.next() {
+        if !after_opts && a.starts_with('-') {
             if a == "-h" || a == "--help" {
                 println!(
                     r#"Transliterate hiragana, katakana and kanji (Japanese text) into romaji (Latin alphabet).
 
-Usage: {} [OPTION] [FILE]
+Usage: {} [OPTION] [Japanese text]
 
-With no FILE, read standard input.
+With no file or text given, kakasi reads from STDIN.
 
 Options:
+  -f <FILE> Read from text file
   -k  Transliterate to hiragana instead of romaji
   -h  show this help page"#,
                     pname
@@ -38,11 +41,23 @@ Options:
                 return;
             } else if a == "-k" {
                 hira = true;
+            } else if a == "-f" {
+                match args.next() {
+                    Some(p) => path = Some(PathBuf::from(p)),
+                    None => {
+                        eprintln!("no file path given");
+                        std::process::exit(2);
+                    }
+                }
             } else {
                 continue;
             }
-        } else if path.is_none() {
-            path = Some(PathBuf::from(a));
+        } else {
+            after_opts = true;
+            if !txt.is_empty() {
+                txt.push(' ');
+            }
+            txt += &a;
         }
     }
 
@@ -60,9 +75,15 @@ Options:
                 .flatten()
                 .for_each(|l| convert_line(&l, hira));
         }
-        None => std::io::stdin()
-            .lines()
-            .flatten()
-            .for_each(|l| convert_line(&l, hira)),
+        None => {
+            if txt.is_empty() {
+                std::io::stdin()
+                    .lines()
+                    .flatten()
+                    .for_each(|l| convert_line(&l, hira))
+            } else {
+                txt.lines().for_each(|l| convert_line(l, hira));
+            }
+        }
     };
 }
