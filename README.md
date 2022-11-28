@@ -32,7 +32,7 @@ $ cargo install kakasi
 
 ## Convert to romaji
 $ kakasi Hello 日本!
-Hello nihon !
+Hello nihon!
 
 ## Convert to hiragana
 $ kakasi -k Hello 日本!

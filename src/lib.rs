@@ -21,10 +21,10 @@ use types::{CharType, KanjiString, Readings};
 /// assert_eq!(res.hiragana, "Hello にほん!");
 /// assert_eq!(res.romaji, "Hello nihon!");
 /// ```
-pub fn convert(text: &str) -> KakasiResult {
+pub fn convert<S: AsRef<str>>(text: S) -> KakasiResult {
     let dict = PhfMap::new(util::KANJI_DICT);
 
-    let text = normalize(text);
+    let text = normalize(text.as_ref());
 
     let mut char_indices = text.char_indices().peekable();
     let mut kana_buf = String::new();
@@ -190,9 +190,9 @@ pub fn convert(text: &str) -> KakasiResult {
 /// assert_eq!(kakasi::is_japanese("日本"), IsJapanese::Maybe);
 /// assert_eq!(kakasi::is_japanese("ラスト"), IsJapanese::True);
 /// ```
-pub fn is_japanese(text: &str) -> IsJapanese {
+pub fn is_japanese<S: AsRef<str>>(text: S) -> IsJapanese {
     let mut maybe = false;
-    for c in text.chars() {
+    for c in text.as_ref().chars() {
         if util::is_char_in_range(c, util::HIRAGANA) || util::is_char_in_range(c, util::KATAKANA) {
             return IsJapanese::True;
         }
