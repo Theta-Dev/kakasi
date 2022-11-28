@@ -7,7 +7,7 @@ edition = "2021"
 once_cell = "1.16.0"
 byteorder = "1.4.3"
 regex = "1.7.0"
-phf = {version = "0.11.1", features = ["macros"]}
+phf = { version = "0.11.1", features = ["macros"] }
 phf_shared = "0.11.0"
 phf_generator = "0.11.0"
 phf_codegen = "0.11.1"

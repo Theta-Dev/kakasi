@@ -1,21 +1,13 @@
 use crate::{Records, CLETTERS};
 
-const ENDMARK: [char; 11] = [
-    ')', ']', '!', '.', ',', '\u{3001}', '\u{3002}', '\u{ff1f}', '\u{ff10}', '\u{ff1e}', '\u{ff1c}',
-];
-const DASH_SYMBOLS: [char; 4] = ['\u{30FC}', '\u{2015}', '\u{2212}', '\u{FF70}'];
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CharType {
     Kanji,
     Katakana,
     Hiragana,
-    Symbol,
-    Alpha,
 }
 
 pub fn convert(text: &str, dict: &Records) -> String {
-    // TODO: char conversion should be done with iterators
     let mut char_indices = text.char_indices();
     let mut kana_text = String::new();
     let mut hiragana = String::new();
@@ -27,17 +19,7 @@ pub fn convert(text: &str, dict: &Records) -> String {
     //          (False, False, True)
 
     while let Some((i, c)) = char_indices.next() {
-        let output_flag = if ENDMARK.contains(&c) {
-            (CharType::Symbol, true, true, true)
-        } else if DASH_SYMBOLS.contains(&c) {
-            (prev_type, false, false, true)
-        } else if is_sym(c) {
-            if prev_type != CharType::Symbol {
-                (CharType::Symbol, true, false, true)
-            } else {
-                (CharType::Symbol, false, true, true)
-            }
-        } else if wana_kana::utils::is_char_katakana(c) {
+        let output_flag = if wana_kana::utils::is_char_katakana(c) {
             (
                 CharType::Katakana,
                 prev_type != CharType::Katakana,
@@ -51,8 +33,6 @@ pub fn convert(text: &str, dict: &Records) -> String {
                 false,
                 true,
             )
-        } else if c.is_ascii() {
-            (CharType::Alpha, prev_type != CharType::Alpha, false, true)
         } else if wana_kana::utils::is_char_kanji(c) {
             if !kana_text.is_empty() {
                 hiragana.push_str(&convert_kana(&kana_text));
@@ -66,18 +46,9 @@ pub fn convert(text: &str, dict: &Records) -> String {
                 }
                 (CharType::Kanji, false, false, false)
             } else {
-                // Unknown kanji
-                kana_text.clear();
-                // TODO: FOR TESTING
-                hiragana.push_str("[?]");
-                (CharType::Kanji, true, false, false)
+                // Unknown kanji, abort the conversion
+                return String::new();
             }
-        } else if matches!(c as u32, 0xf000..=0xfffd | 0x10000..=0x10ffd) {
-            // PUA: ignore and drop
-            if !kana_text.is_empty() {
-                hiragana.push_str(&convert_kana(&kana_text));
-            }
-            (prev_type, false, false, false)
         } else {
             (prev_type, true, true, true)
         };
@@ -104,22 +75,6 @@ pub fn convert(text: &str, dict: &Records) -> String {
     }
 
     hiragana
-}
-
-fn is_sym(c: char) -> bool {
-    matches!(c as u32,
-        0x3000..=0x3020 |
-        0x3030..=0x303F |
-        0x0391..=0x03A1 |
-        0x03A3..=0x03A9 |
-        0x03B1..=0x03C9 |
-        0x0410..= 0x044F |
-        0xFF01..=0xFF1A |
-        0x00A1..=0x00FF |
-        0xFF20..=0xFF5E |
-        0x0451 |
-        0x0401
-    )
 }
 
 fn convert_kana(text: &str) -> String {

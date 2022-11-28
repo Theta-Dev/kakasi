@@ -167,7 +167,7 @@ impl Iterator for ReadingsIter {
             } else {
                 // Hiragana
                 let h = match c {
-                    0x7f => ' ',
+                    0x7f => 'ー',
                     _ => (util::HIRAGANA.0 + *c as u32).try_into().unwrap(),
                 };
                 if read_ctx {
