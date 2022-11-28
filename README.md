@@ -10,9 +10,9 @@ It was ported from the [pykakasi](https://codeberg.org/miurahr/pykakasi) library
 Transliterate:
 
 ```rust
-let res = kakasi::convert("Hello 日本!");
-assert_eq!(res.hiragana, "Hello にほん!");
-assert_eq!(res.romaji, "Hello nihon!");
+let res = kakasi::convert("こんにちは世界!");
+assert_eq!(res.hiragana, "こんにちはせかい!");
+assert_eq!(res.romaji, "konnichiha sekai!");
 ```
 
 Check if a string contains Japanese characters:
@@ -31,18 +31,18 @@ assert_eq!(kakasi::is_japanese("ラスト"), IsJapanese::True);
 $ cargo install kakasi
 
 ## Convert to romaji
-$ kakasi Hello 日本!
-Hello nihon!
+$ kakasi こんにちは世界!
+konnichiha sekai!
 
 ## Convert to hiragana
-$ kakasi -k Hello 日本!
-Hello にほん!
+$ kakasi -k こんにちは世界!
+こんにちはせかい!
 
 ## Read from file
 $ kakasi -f rust_article.txt
 
 ## Read from STDIN
-$ echo "Hello 日本" | kakasi
+$ echo "こんにちは世界!" | kakasi
 ```
 
 ## Performance

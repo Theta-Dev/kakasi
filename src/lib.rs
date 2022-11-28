@@ -17,9 +17,9 @@ use types::{CharType, KanjiString, Readings};
 /// Convert the given Japanese text to hiragana/romaji
 ///
 /// ```
-/// let res = kakasi::convert("Hello 日本!");
-/// assert_eq!(res.hiragana, "Hello にほん!");
-/// assert_eq!(res.romaji, "Hello nihon!");
+/// let res = kakasi::convert("こんにちは世界!");
+/// assert_eq!(res.hiragana, "こんにちはせかい!");
+/// assert_eq!(res.romaji, "konnichiha sekai!");
 /// ```
 pub fn convert<S: AsRef<str>>(text: S) -> KakasiResult {
     let dict = PhfMap::new(util::KANJI_DICT);
