@@ -12,7 +12,7 @@ Transliterate:
 ```rust
 let res = kakasi::convert("Hello 日本!");
 assert_eq!(res.hiragana, "Hello にほん!");
-assert_eq!(res.romaji, "Hello nihon !");
+assert_eq!(res.romaji, "Hello nihon!");
 ```
 
 Check if a string contains Japanese characters:

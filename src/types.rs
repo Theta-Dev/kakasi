@@ -45,11 +45,11 @@ pub enum CharType {
     Kanji,
     /// Whitespace characters (spaces, newlines, etc.)
     Whitespace,
-    /// Japanese punctuation that is led by a space (e.g. `A #B`, `A (B`)
+    /// Punctuation that is led by a space (e.g. `A #B`, `A (B`)
     LeadingPunct,
-    /// Japanese punctuation that is followed by a space (e.g. `A: B`, `A) B`)
+    /// Punctuation that is followed by a space (e.g. `A: B`, `A) B`)
     TrailingPunct,
-    /// Japanese punctuation the is not seperated by spaces (e.g `A~B`, `A_B`)
+    /// Punctuation that is not seperated by spaces (e.g `A~B`, `A_B`)
     JoiningPunct,
     /// Numbers as well as dots and commas used as decimal seperators
     Numeric,
@@ -192,6 +192,16 @@ impl Iterator for ReadingsIter {
                 }
             }
         })
+    }
+}
+
+impl CharType {
+    pub fn space_after(self) -> bool {
+        self != CharType::LeadingPunct && self != CharType::JoiningPunct
+    }
+
+    pub fn space_before(self) -> bool {
+        self != CharType::TrailingPunct && self != CharType::JoiningPunct
     }
 }
 

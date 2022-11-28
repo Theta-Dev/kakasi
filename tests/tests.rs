@@ -91,6 +91,11 @@ const RUST_ARTICLE_ROMAJI: &str = include_str!("../tests/rust_article_romaji.txt
 )]
 #[case("要所々々", "ようしょようしょ", "yousho yousho")]
 #[case("Hello World. abcd.", "Hello World. abcd.", "Hello World. abcd.")]
+#[case(
+    "INNOCENCE(Live at 渋谷公会堂)",
+    "INNOCENCE(Live at しぶやこうかいどう)",
+    "INNOCENCE(Live at shibuya koukaidou)"
+)]
 #[case::rust_article(RUST_ARTICLE, RUST_ARTICLE_HIRAGANA, RUST_ARTICLE_ROMAJI)]
 fn romanize(#[case] text: &str, #[case] hiragana: &str, #[case] romaji: &str) {
     let res = kakasi::convert(text);

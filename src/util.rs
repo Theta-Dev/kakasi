@@ -63,6 +63,19 @@ pub static PCT_DICT: phf::Map<char, (char, CharType)> = phf::phf_map!(
     '［' => ('[', CharType::LeadingPunct),
     '｛' => ('{', CharType::LeadingPunct),
     '＿' => ('{', CharType::JoiningPunct),
+
+    ':' => (':', CharType::TrailingPunct),
+    ';' => (';', CharType::TrailingPunct),
+    '!' => ('!', CharType::TrailingPunct),
+    '?' => ('?', CharType::TrailingPunct),
+    '#' => ('#', CharType::JoiningPunct),
+    ')' => (')', CharType::TrailingPunct),
+    ']' => (']', CharType::TrailingPunct),
+    '}' => ('}', CharType::TrailingPunct),
+    '(' => ('(', CharType::LeadingPunct),
+    '[' => ('[', CharType::LeadingPunct),
+    '{' => ('{', CharType::LeadingPunct),
+    '_' => ('_', CharType::JoiningPunct),
 );
 
 pub const HIRAGANA: (u32, u32) = (0x3041, 0x3096);

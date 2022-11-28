@@ -19,7 +19,7 @@ use types::{CharType, KanjiString, Readings};
 /// ```
 /// let res = kakasi::convert("Hello 日本!");
 /// assert_eq!(res.hiragana, "Hello にほん!");
-/// assert_eq!(res.romaji, "Hello nihon !");
+/// assert_eq!(res.romaji, "Hello nihon!");
 /// ```
 pub fn convert(text: &str) -> KakasiResult {
     let dict = PhfMap::new(util::KANJI_DICT);
@@ -30,8 +30,8 @@ pub fn convert(text: &str) -> KakasiResult {
     let mut kana_buf = String::new();
     // Type of the character last added to kana_buf
     let mut prev_buf_type = CharType::Whitespace;
-    // Type of the character last added to the result
-    let mut prev_acc_type = CharType::Whitespace;
+    // Type of the character last added to the result + is_japanese flag
+    let mut prev_acc_type = (CharType::Whitespace, false);
     // Capitalization flags
     // 0: capitalize next word, 1: capitalize first sentence, 2: first sentence capitalized
     let mut cap = (false, false, false);
@@ -40,7 +40,7 @@ pub fn convert(text: &str) -> KakasiResult {
 
     let conv_kana_buf = |kana_buf: &mut String,
                          res: &mut KakasiResult,
-                         prev_acc_type: &mut CharType,
+                         prev_acc_type: &mut (CharType, bool),
                          cap: &mut (bool, bool, bool)| {
         if !kana_buf.is_empty() {
             let hira = convert_katakana(kana_buf);
@@ -56,15 +56,11 @@ pub fn convert(text: &str) -> KakasiResult {
                 cap.2 = true;
             }
 
-            util::ensure_trailing_space(
-                &mut res.romaji,
-                *prev_acc_type != CharType::LeadingPunct
-                    && *prev_acc_type != CharType::JoiningPunct,
-            );
+            util::ensure_trailing_space(&mut res.romaji, prev_acc_type.0.space_after());
             res.romaji.push_str(&rom);
 
             kana_buf.clear();
-            *prev_acc_type = CharType::Hiragana;
+            *prev_acc_type = (CharType::Hiragana, true);
         }
     };
 
@@ -96,17 +92,17 @@ pub fn convert(text: &str) -> KakasiResult {
                 res.hiragana.push(c);
                 res.romaji.push(c);
             }
-            prev_acc_type = CharType::Kanji;
+            prev_acc_type = (CharType::Kanji, true);
         } else if c.is_whitespace() {
             conv_kana_buf(&mut kana_buf, &mut res, &mut prev_acc_type, &mut cap);
             res.hiragana.push(c);
             res.romaji.push(c);
-            prev_acc_type = CharType::Whitespace;
+            prev_acc_type = (CharType::Whitespace, false);
         } else if c == '・' {
             conv_kana_buf(&mut kana_buf, &mut res, &mut prev_acc_type, &mut cap);
             res.hiragana.push(c);
             res.romaji.push(' ');
-            prev_acc_type = CharType::Whitespace;
+            prev_acc_type = (CharType::Whitespace, false);
         } else if c == util::PROLONGED_SOUND_MARK {
             if prev_buf_type != CharType::Hiragana && prev_buf_type != CharType::Katakana {
                 conv_kana_buf(&mut kana_buf, &mut res, &mut prev_acc_type, &mut cap);
@@ -125,35 +121,33 @@ pub fn convert(text: &str) -> KakasiResult {
             // Japanese punctuation can be looked up in the dictionary, otherwise assume CharType::Other.
             // Special case: dots and commas used as decimal seperators
             let (c_rom, char_type) = util::PCT_DICT.get(&c).copied().unwrap_or_else(|| {
+                let is_point = c == '.' || c == ',';
                 (
                     c,
                     if c.is_ascii_digit()
-                        || ((c == '.' || c == ',')
-                            && prev_acc_type == CharType::Numeric
+                        || (is_point
+                            && prev_acc_type.0 == CharType::Numeric
                             && char_indices
                                 .peek()
                                 .map(|(_, nc)| nc.is_ascii_digit())
                                 .unwrap_or_default())
                     {
                         CharType::Numeric
+                    } else if is_point {
+                        CharType::TrailingPunct
                     } else {
                         CharType::Other
                     },
                 )
             });
 
+            // Add correct spacing if it is a Japanese punctuation character or the last character
+            // was Japanese
             let is_jpunct = util::is_char_japanese_punctuation(c);
-            if (prev_acc_type != CharType::Other
-                && prev_acc_type != CharType::Numeric
-                && prev_acc_type != CharType::Whitespace)
-                || is_jpunct
-            {
+            if prev_acc_type.1 || is_jpunct {
                 util::ensure_trailing_space(
                     &mut res.romaji,
-                    prev_acc_type != CharType::LeadingPunct
-                        && prev_acc_type != CharType::JoiningPunct
-                        && char_type != CharType::TrailingPunct
-                        && char_type != CharType::JoiningPunct,
+                    prev_acc_type.0.space_after() && char_type.space_before(),
                 );
             }
 
@@ -169,11 +163,11 @@ pub fn convert(text: &str) -> KakasiResult {
             // the next word should be capitalized.
             // Keep the capitalization flag set if the following character is leading or joining
             // punctuation. Example: `Sentence1. "Nice", sentence 2.`
-            cap.0 = c_rom == '.' && char_type != CharType::Numeric
-                || cap.0 && matches!(char_type, CharType::LeadingPunct | CharType::JoiningPunct);
+            cap.0 =
+                c_rom == '.' && char_type != CharType::Numeric || cap.0 && !char_type.space_after();
             cap.1 |= cap.0;
 
-            prev_acc_type = char_type;
+            prev_acc_type = (char_type, is_jpunct);
         };
     }
 
