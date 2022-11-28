@@ -13,13 +13,14 @@ members = [".", "codegen"]
 
 [dependencies]
 byteorder = "1.4.3"
-phf = {version = "0.11.1", features = ["macros"]}
+phf = { version = "0.11.1", features = ["macros"] }
 phf_shared = "0.11.1"
 unicode-normalization = "0.1.22"
 
 [dev-dependencies]
 criterion = "0.4.0"
 rstest = { version = "0.16.0", default-features = false }
+proptest = "1.0.0"
 
 [[bench]]
 name = "kakasi_benchmark"

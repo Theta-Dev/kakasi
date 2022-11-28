@@ -1,3 +1,4 @@
+use proptest::prelude::*;
 use rstest::rstest;
 
 const RUST_ARTICLE: &str = include_str!("../tests/rust_article.txt");
@@ -101,4 +102,14 @@ fn romanize(#[case] text: &str, #[case] hiragana: &str, #[case] romaji: &str) {
     let res = kakasi::convert(text);
     assert_eq!(res.hiragana, hiragana);
     assert_eq!(res.romaji, romaji);
+}
+
+proptest! {
+    /// Romanizing ASCII strings should return them unchanged
+    #[test]
+    fn romanize_ascii(s in r#"\p{ASCII}+"#) {
+        let res = kakasi::convert(&s);
+        assert_eq!(res.hiragana, s);
+        assert_eq!(res.romaji, s);
+    }
 }
