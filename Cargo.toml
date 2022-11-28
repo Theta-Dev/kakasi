@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["ThetaDev"]
 license = "GPL-3.0"
 description = "Romanize hiragana, katakana and kanji (Japanese text)"
+repository = "https://github.com/Theta-Dev/kakasi"
 
 include = ["src/*", "tests/*", "benches/*", "README.md", "LICENSE"]
 
