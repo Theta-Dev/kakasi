@@ -1,34 +1,12 @@
 name: 🚀 Continuous Deployment
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - "v*.*.*"
 
 jobs:
-  generate-changelog:
-    name: Generate changelog
-    runs-on: ubuntu-20.04
-    outputs:
-      release_body: ${{ steps.release.outputs.release_body }}
-    steps:
-      - uses: actions/checkout@v3
-      - name: Generate a changelog
-        uses: orhun/git-cliff-action@v1
-        id: git-cliff
-        with:
-          args: --latest --strip all
-      - name: Set the release body
-        id: release
-        shell: bash
-        run: |
-          r=$(cat ${{ steps.git-cliff.outputs.changelog }})
-          r="$(printf "$r" | tail -n +3)"
-          r="${r//'%'/'%25'}"
-          r="${r//$'\n'/'%0A'}"
-          r="${r//$'\r'/'%0D'}"
-          echo "release_body=$r" >> $GITHUB_OUTPUT
-
   publish:
     name: Publish on crates.io
     needs: generate-changelog
