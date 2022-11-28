@@ -81,7 +81,7 @@ fn parse_dict_ln(records: &mut Records, line: &str, ln: usize) {
                 panic!("kanji({}): tail + context are mutually exclusive", ln);
             }
 
-            let record = records.entry(kanji.to_owned()).or_default();
+            let record = records.entry(kanji).or_default();
             record
                 .entry(
                     tail.map(|t| t.to_string())
@@ -132,14 +132,13 @@ impl Encodable for KanjiString {
     fn encode(&self) -> Vec<u8> {
         self.0
             .chars()
-            .map(|c| {
+            .flat_map(|c| {
                 let c = c as u32;
                 if c > 0xffff {
                     panic!("character `{}` > 0xffff", { c });
                 }
                 [((c & 0xff00) >> 8) as u8, (c & 0xff) as u8]
             })
-            .flatten()
             .collect()
     }
 }
