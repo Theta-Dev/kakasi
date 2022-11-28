@@ -6,7 +6,7 @@ authors = ["ThetaDev"]
 license = "GPL-3.0"
 description = "Romanize hiragana, katakana and kanji (Japanese text)"
 
-include = ["/src", "README.md", "LICENSE"]
+include = ["src/*", "tests/*", "benches/*", "README.md", "LICENSE"]
 
 [workspace]
 members = [".", "codegen"]
@@ -19,7 +19,7 @@ unicode-normalization = "0.1.22"
 
 [dev-dependencies]
 criterion = "0.4.0"
-rstest = { version = "0.15.0", default-features = false }
+rstest = { version = "0.16.0", default-features = false }
 
 [[bench]]
 name = "kakasi_benchmark"
