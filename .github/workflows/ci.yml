@@ -8,38 +8,23 @@ on:
       - main
 
 jobs:
-  fmt:
-    name: 💄 Rustfmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Run rustfmt
-        run: cargo fmt --all -- --check
-
-  clippy:
-    name: 📎 Clippy
+  ci:
+    name: CI
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "ci"
-      - uses: actions-rs/clippy-check@v1
+
+      - name: 💄 Rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: 📎 Clippy
+        uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: "--all --all-features -- -D warnings"
           name: Clippy Output
 
-  test:
-    name: 🧪 Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "ci"
-      - name: Run tests
+      - name: 🧪 Test
         run: cargo test --all --all-features
