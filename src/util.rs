@@ -2,6 +2,7 @@ use crate::types::CharType;
 
 pub const KANJI_DICT: &[u8] = include_bytes!("./kanji_dict.bin");
 
+/// Hiragana groups for matching `Tail` readings
 pub static CLETTERS: phf::Map<u8, &[char]> = phf::phf_map!(
     b'a' => &['あ', 'ぁ', 'っ', 'わ', 'ゎ'],
     b'i' => &['い', 'ぃ', 'っ', 'ゐ'],
@@ -28,6 +29,7 @@ pub static CLETTERS: phf::Map<u8, &[char]> = phf::phf_map!(
     b'v' => &['ゔ'],
 );
 
+/// Mapping between Japanese and Western punctuation
 pub static PCT_DICT: phf::Map<char, (char, CharType)> = phf::phf_map!(
     '、' => (',', CharType::TrailingPunct),
     '。' => ('.', CharType::TrailingPunct),

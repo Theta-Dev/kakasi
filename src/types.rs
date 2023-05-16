@@ -22,7 +22,9 @@ pub enum Reading {
     Simple {
         hira: String,
     },
+    /// Reading that has to be followed by a hiragana from a specified group
     ///
+    /// See [`crate::util::CLETTERS`] for the hiragana groups
     Tail {
         hira: String,
         ch: u8,
